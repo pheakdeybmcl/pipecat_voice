@@ -160,7 +160,7 @@ async def ws_fs(ws: WebSocket):
                 settings.vad_rms_threshold,
             )
         except Exception as exc:
-            logger.warning("Barge-in VAD disabled: %s", exc)
+            logger.warning("Barge-in VAD disabled: {}", exc)
             vad = None
 
     try:
