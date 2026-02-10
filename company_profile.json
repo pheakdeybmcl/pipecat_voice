@@ -1,0 +1,58 @@
+{
+  "company_name": "BigfootMediaTech",
+  "tagline": "Cloud communications for voice, messaging, and eSIM.",
+  "services": [
+    {
+      "name": "Voice",
+      "description": "Business calling, IVR, and call center features.",
+      "features": [
+        "Inbound/outbound calling",
+        "IVR menus",
+        "Call recording",
+        "Local & toll-free numbers"
+      ]
+    },
+    {
+      "name": "Messaging",
+      "description": "SMS and two-way messaging for support and alerts.",
+      "features": [
+        "SMS",
+        "Two-way messaging",
+        "Delivery reports",
+        "Shortcodes (optional)"
+      ]
+    },
+    {
+      "name": "eSIM",
+      "description": "eSIM connectivity for devices and IoT.",
+      "features": [
+        "Device activation",
+        "Usage tracking",
+        "Multi-network coverage"
+      ]
+    }
+  ],
+  "plans": [
+    {
+      "name": "Starter",
+      "price": "$25/mo",
+      "includes": "500 minutes, 1,000 SMS, 1 number"
+    },
+    {
+      "name": "Business",
+      "price": "$79/mo",
+      "includes": "3,000 minutes, 5,000 SMS, 3 numbers, basic IVR"
+    },
+    {
+      "name": "Enterprise",
+      "price": "Custom",
+      "includes": "Unlimited usage, dedicated support, SLA, custom routing"
+    }
+  ],
+  "support": {
+    "hours": "Mon–Fri 9am–6pm",
+    "email": "support@bigfootmediatech.com",
+    "phone": "+1-555-0100"
+  },
+  "greeting": "Hello, this is {company_name} support. How can I help you today?"
+}

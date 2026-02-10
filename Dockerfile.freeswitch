@@ -1,0 +1,81 @@
+FROM debian:bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV FS_PREFIX=/usr/local/freeswitch
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
+ENV PATH="${FS_PREFIX}/bin:${PATH}"
+
+RUN apt-get update && apt-get install -y \
+    git build-essential autoconf automake libtool libtool-bin pkg-config cmake \
+    nasm yasm \
+    libssl-dev libcurl4-openssl-dev libspeex-dev libspeexdsp-dev zlib1g-dev libevent-dev \
+    libedit-dev libsqlite3-dev libpcre3-dev libpcre2-dev libldns-dev libopus-dev libsndfile1-dev \
+    libjpeg-dev libtiff-dev libavformat-dev libswscale-dev libavcodec-dev libavutil-dev \
+    liblua5.2-dev libpq-dev uuid-dev libwebsockets-dev ca-certificates \
+    libshout3-dev libmpg123-dev libogg-dev libvorbis-dev libmp3lame-dev \
+    python3 python3-pip ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir --break-system-packages edge-tts
+
+# Build sofia-sip
+RUN git clone --depth 1 https://github.com/freeswitch/sofia-sip.git /usr/src/sofia-sip \
+ && cd /usr/src/sofia-sip \
+ && ./bootstrap.sh \
+ && ./configure --prefix=/usr/local \
+ && make -j"$(nproc)" \
+ && make install \
+ && ldconfig
+
+# Build spandsp3
+RUN git clone --depth 1 https://github.com/freeswitch/spandsp.git /usr/src/spandsp \
+ && cd /usr/src/spandsp \
+ && ./bootstrap.sh \
+ && ./configure \
+ && make -j"$(nproc)" \
+ && make install \
+ && ldconfig
+
+# Build FreeSWITCH
+RUN git clone --depth 1 https://github.com/signalwire/freeswitch.git /usr/src/freeswitch
+WORKDIR /usr/src/freeswitch
+
+RUN ./bootstrap.sh -j \
+ && if [ -f modules.conf.in ]; then cp modules.conf.in modules.conf; \
+    elif [ -f build/modules.conf.in ]; then cp build/modules.conf.in modules.conf; \
+    fi \
+ && sed -i -e '/mod_verto/s/^/#/' -e '/mod_signalwire/s/^/#/' modules.conf \
+ && sed -i -e '/mod_shout/s/^#//' modules.conf \
+ && sed -i -e '/mod_tts_commandline/s/^#//' modules.conf \
+ && grep -q '^mod_shout' modules.conf || echo 'mod_shout' >> modules.conf \
+ && grep -q '^mod_tts_commandline' modules.conf || echo 'mod_tts_commandline' >> modules.conf \
+ && PKG_CONFIG_PATH="${PKG_CONFIG_PATH}" ./configure --disable-dependency-tracking --prefix="${FS_PREFIX}" \
+ && make -j"$(nproc)" \
+ && make install
+
+# Build mod_audio_stream
+RUN git clone --depth 1 https://github.com/amigniter/mod_audio_stream.git /usr/src/mod_audio_stream
+WORKDIR /usr/src/mod_audio_stream
+RUN git submodule update --init --recursive \
+ && mkdir -p build \
+ && cd build \
+ && PKG_CONFIG_PATH="${FS_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" \
+    cmake -DCMAKE_BUILD_TYPE=Release -DFS_SRC=/usr/src/freeswitch -DFS_PREFIX="${FS_PREFIX}" .. \
+ && make -j"$(nproc)" \
+ && make install
+
+# Enable module (note: FreeSWITCH installs configs under etc/freeswitch)
+RUN sed -i 's|</modules>|  <load module="mod_audio_stream"/>\n</modules>|' \
+  "${FS_PREFIX}/etc/freeswitch/autoload_configs/modules.conf.xml"
+
+RUN sed -i 's|</modules>|  <load module="mod_shout"/>\n</modules>|' \
+  "${FS_PREFIX}/etc/freeswitch/autoload_configs/modules.conf.xml"
+
+RUN sed -i 's|</modules>|  <load module="mod_tts_commandline"/>\n</modules>|' \
+  "${FS_PREFIX}/etc/freeswitch/autoload_configs/modules.conf.xml"
+
+COPY tts_edge.py /usr/local/bin/tts_edge.py
+RUN chmod +x /usr/local/bin/tts_edge.py
+COPY tts_commandline.conf.xml ${FS_PREFIX}/etc/freeswitch/autoload_configs/tts_commandline.conf.xml
+
+CMD ["/usr/local/freeswitch/bin/freeswitch","-nonat","-nf"]

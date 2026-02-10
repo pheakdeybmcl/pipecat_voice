@@ -1,0 +1,5 @@
+<configuration name="tts_commandline.conf" description="Command Line TTS">
+  <settings>
+    <param name="command" value="/usr/local/bin/tts_edge.py --voice ${voice} --outfile ${file} --text &quot;${text}&quot;"/>
+  </settings>
+</configuration>
