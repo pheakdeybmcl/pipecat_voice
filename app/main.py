@@ -86,6 +86,8 @@ async def ws_fs(ws: WebSocket):
 
     try:
         stt = _build_stt()
+        # Ensure Deepgram socket is connected before sending any audio
+        await stt._connect()
     except Exception as exc:
         logger.error("STT init failed: %s", exc)
         await ws.close()
