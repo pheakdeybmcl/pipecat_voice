@@ -18,7 +18,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 if "pipecat.services.deepgram.tts" not in sys.modules:
     sys.modules["pipecat.services.deepgram.tts"] = types.ModuleType("pipecat.services.deepgram.tts")
 
-from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.deepgram.stt import DeepgramSTTService as _DeepgramSTTService
 
 try:
     from deepgram import LiveOptions
@@ -31,6 +31,24 @@ from .esl_listener import run_esl_autoplay, esl_api_command
 from .barge_in import BargeInState, WebRTCBargeInVAD
 
 app = FastAPI()
+
+
+# Patch Deepgram STT connect for websockets>=12 (protocol has no .response attribute).
+_orig_dg_connect = _DeepgramSTTService._connect
+
+
+async def _dg_connect_no_response(self, *args, **kwargs):
+    try:
+        return await _orig_dg_connect(self, *args, **kwargs)
+    except AttributeError as exc:
+        if "response" in str(exc):
+            logger.warning("Deepgram websocket response headers unavailable; continuing")
+            return None
+        raise
+
+
+_DeepgramSTTService._connect = _dg_connect_no_response
+DeepgramSTTService = _DeepgramSTTService
 
 
 @app.on_event("startup")
