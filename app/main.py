@@ -4,6 +4,8 @@ import asyncio
 import contextlib
 import json
 import time
+import sys
+import types
 
 from fastapi import FastAPI, WebSocket
 from loguru import logger
@@ -12,6 +14,10 @@ from pipecat.frames.frames import InputAudioRawFrame, StartFrame, EndFrame, LLMT
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
+# Avoid importing Deepgram TTS (pulls websockets.asyncio) since we only use STT.
+if "pipecat.services.deepgram.tts" not in sys.modules:
+    sys.modules["pipecat.services.deepgram.tts"] = types.ModuleType("pipecat.services.deepgram.tts")
+
 from pipecat.services.deepgram.stt import DeepgramSTTService
 
 try:
@@ -88,8 +94,8 @@ async def ws_fs(ws: WebSocket):
         stt = _build_stt()
         # Ensure Deepgram socket is connected before sending any audio
         await stt._connect()
-    except Exception as exc:
-        logger.error("STT init failed: %s", exc)
+    except Exception:
+        logger.exception("STT init failed")
         await ws.close()
         return
 
