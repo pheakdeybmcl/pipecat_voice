@@ -9,3 +9,10 @@ legacy/
 __pycache__/
 *.mp3
 *.sqlite3
+
+legacy/
+.env
+.venv*
+__pycache__/
+*.mp3
+*.sqlite3
