@@ -139,7 +139,14 @@ async def ws_fs(ws: WebSocket):
         audio_in_sample_rate=settings.sample_rate,
         audio_out_sample_rate=settings.sample_rate,
     )
-    task = PipelineTask(pipeline, params=params)
+    # Disable built-in idle timeout cancellation. We use explicit silence hangup logic
+    # that is aware of TTS playback and call state.
+    task = PipelineTask(
+        pipeline,
+        params=params,
+        idle_timeout_secs=None,
+        cancel_on_idle_timeout=False,
+    )
     runner = PipelineRunner()
     runner_task = asyncio.create_task(runner.run(task))
 
