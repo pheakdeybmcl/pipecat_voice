@@ -29,12 +29,24 @@
       <action application="set" data="RECORD_WRITE_ONLY=false"/>
       <action application="record_session" data="/tmp/${uuid}_read.wav"/>
 
-      <!-- Language selection handled in FreeSWITCH -->
+      <!-- Language selection -->
       <action application="set" data="lang=en"/>
+      <action application="set" data="lang_digit="/>
       <!-- Give RTP a moment to open so the prompt isn't clipped -->
       <action application="playback" data="silence_stream://500"/>
-      <!-- Default to 1 if no digit collected to avoid empty expansions -->
-      <action application="set" data="lang=en"/>
+      <!-- "Press 1 for English, 2 for Khmer" -->
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-press.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-one.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-for.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-english.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-press.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-two.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-for.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-language.wav"/>
+      <!-- Read 1 digit, 3 tries, 5s timeout -->
+      <action application="read" data="1 1 3 5000 # lang_digit /usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-please_enter_extension_followed_by_pound.wav"/>
+      <!-- Map digit to language (default to en) -->
+      <action application="set" data="lang=${if(${lang_digit}==2,km,en)}"/>
 
       <!-- Start audio stream with selected language -->
       <!-- WS host/port from globals (set in vars.xml) -->
