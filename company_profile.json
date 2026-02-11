@@ -1,58 +1,89 @@
 {
   "company_name": "BigfootMediaTech",
   "tagline": "Cloud communications for voice, messaging, and eSIM.",
+  "overview": "We provide programmable voice, SMS, and eSIM services for businesses, call centers, and IoT teams. We focus on reliability, quick setup, and clear pricing.",
   "services": [
     {
       "name": "Voice",
       "description": "Business calling, IVR, and call center features.",
       "features": [
         "Inbound/outbound calling",
-        "IVR menus",
-        "Call recording",
-        "Local & toll-free numbers"
+        "IVR menus and call routing",
+        "Call recording and storage",
+        "Local & toll-free numbers",
+        "SIP trunking and PBX integration",
+        "Queue and agent routing"
       ]
     },
     {
       "name": "Messaging",
       "description": "SMS and two-way messaging for support and alerts.",
       "features": [
-        "SMS",
-        "Two-way messaging",
-        "Delivery reports",
-        "Shortcodes (optional)"
+        "Two-way SMS",
+        "Delivery reports and retries",
+        "Shortcodes and long codes",
+        "Opt-in/opt-out management",
+        "Templates and scheduled sends"
       ]
     },
     {
       "name": "eSIM",
       "description": "eSIM connectivity for devices and IoT.",
       "features": [
-        "Device activation",
-        "Usage tracking",
-        "Multi-network coverage"
+        "Device activation and provisioning",
+        "Usage tracking and data caps",
+        "Multi-network coverage",
+        "Lifecycle management"
       ]
     }
+  ],
+  "add_ons": [
+    "Call transcription and analytics",
+    "Fraud protection and number screening",
+    "Dedicated IPs and custom routing",
+    "Compliance packs (A2P 10DLC registration)"
   ],
   "plans": [
     {
       "name": "Starter",
-      "price": "$25/mo",
-      "includes": "500 minutes, 1,000 SMS, 1 number"
+      "price": "$29/mo",
+      "includes": "1 number, 1,000 minutes, 1,500 SMS",
+      "overage": "Voice $0.015/min, SMS $0.008/msg"
     },
     {
       "name": "Business",
-      "price": "$79/mo",
-      "includes": "3,000 minutes, 5,000 SMS, 3 numbers, basic IVR"
+      "price": "$99/mo",
+      "includes": "3 numbers, 5,000 minutes, 8,000 SMS, basic IVR",
+      "overage": "Voice $0.012/min, SMS $0.007/msg"
     },
     {
       "name": "Enterprise",
       "price": "Custom",
-      "includes": "Unlimited usage, dedicated support, SLA, custom routing"
+      "includes": "High volume, advanced routing, dedicated support, SLA"
     }
   ],
+  "numbers": {
+    "local_number": "$1/mo",
+    "toll_free_number": "$2/mo",
+    "porting": "Free with active plan"
+  },
+  "onboarding": [
+    "Choose a plan and add numbers",
+    "Verify your business for messaging",
+    "Configure routing/IVR",
+    "Go live"
+  ],
+  "sla": "99.95% uptime for Enterprise customers",
   "support": {
     "hours": "Mon–Fri 9am–6pm",
     "email": "support@bigfootmediatech.com",
-    "phone": "+1-555-0100"
+    "phone": "+1-555-0100",
+    "response_time": "Same business day for standard plans"
   },
-  "greeting": "Hello, this is {company_name} support. How can I help you today?"
+  "compliance": [
+    "A2P 10DLC guidance",
+    "Opt-in/opt-out enforcement",
+    "Data retention controls"
+  ],
+  "greeting": "Hello, this is support. How can I help you today?"
 }

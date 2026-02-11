@@ -39,6 +39,9 @@ def _format_company_profile(profile: dict) -> str:
     tagline = profile.get("tagline")
     if tagline:
         lines.append(f"Tagline: {tagline}")
+    overview = profile.get("overview")
+    if overview:
+        lines.append(f"Overview: {overview}")
     services = profile.get("services") or []
     if services:
         lines.append("Services:")
@@ -56,6 +59,12 @@ def _format_company_profile(profile: dict) -> str:
             for feat in feats:
                 if isinstance(feat, str):
                     lines.append(f"- {feat}")
+    add_ons = profile.get("add_ons") or []
+    if add_ons:
+        lines.append("Add-ons:")
+        for item in add_ons:
+            if isinstance(item, str):
+                lines.append(f"- {item}")
     plans = profile.get("plans") or []
     if plans:
         lines.append("Plans:")
@@ -65,6 +74,7 @@ def _format_company_profile(profile: dict) -> str:
             pname = plan.get("name")
             price = plan.get("price")
             includes = plan.get("includes")
+            overage = plan.get("overage")
             if pname:
                 line = f"- {pname}"
                 if price:
@@ -72,11 +82,30 @@ def _format_company_profile(profile: dict) -> str:
                 if includes:
                     line += f": {includes}"
                 lines.append(line)
+                if overage:
+                    lines.append(f"- Overage: {overage}")
+    numbers = profile.get("numbers") or {}
+    if isinstance(numbers, dict) and numbers:
+        lines.append("Number pricing:")
+        for k, v in numbers.items():
+            if v:
+                label = str(k).replace("_", " ").title()
+                lines.append(f"- {label}: {v}")
+    onboarding = profile.get("onboarding") or []
+    if onboarding:
+        lines.append("Onboarding:")
+        for step in onboarding:
+            if isinstance(step, str):
+                lines.append(f"- {step}")
+    sla = profile.get("sla")
+    if sla:
+        lines.append(f"SLA: {sla}")
     support = profile.get("support") or {}
     if isinstance(support, dict):
         hours = support.get("hours")
         email = support.get("email")
         phone = support.get("phone")
+        response_time = support.get("response_time")
         if hours or email or phone:
             lines.append("Support:")
             if hours:
@@ -85,6 +114,14 @@ def _format_company_profile(profile: dict) -> str:
                 lines.append(f"- Email: {email}")
             if phone:
                 lines.append(f"- Phone: {phone}")
+            if response_time:
+                lines.append(f"- Response time: {response_time}")
+    compliance = profile.get("compliance") or []
+    if compliance:
+        lines.append("Compliance:")
+        for item in compliance:
+            if isinstance(item, str):
+                lines.append(f"- {item}")
     return "\n".join(lines).strip()
 
 
@@ -98,10 +135,11 @@ def _system_prompt() -> str:
         "If a request is unrelated, refuse briefly and redirect to company topics.\n"
         "Never provide instructions to modify files, run commands, access systems, or change servers.\n"
         "Do not mention being an AI.\n"
-        "Tone: professional, calm, and helpful. Use clear, short sentences.\n"
+        "Tone: professional, calm, and helpful. Use clear, natural sentences.\n"
+        "Avoid repeating the company name unless the user asks or clarity requires it. Use \"we\" and \"our\" instead.\n"
         "Only use a brief acknowledgment (e.g., \"Sure,\" \"Of course,\") when the user explicitly asks for help or a request. "
         "Do not start every reply with an acknowledgment.\n"
-        "Keep replies very short (1-2 sentences). Ask a brief follow-up only if needed.\n"
+        "Keep replies concise (1-3 sentences). Ask a brief follow-up only if needed.\n"
     )
     prompt = f"{rules}\nCompany profile:\n{profile_text}\n"
     return prompt.replace("the company", company_name)
