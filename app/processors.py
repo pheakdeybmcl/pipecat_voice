@@ -20,7 +20,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from .codex_llm import run_codex
+from .codex_llm import run_codex, detect_end_call_intent
 from .edge_tts import synthesize_to_wav
 from .frames import TTSBytesFrame
 from .barge_in import BargeInState, calc_rms
@@ -28,10 +28,12 @@ from .config import settings
 
 
 class CodexLLMProcessor(FrameProcessor):
-    def __init__(self):
+    def __init__(self, *, call_uuid: str, hangup_cb):
         super().__init__(name="CodexLLM")
         self._session_id: Optional[str] = None
         self._lock = asyncio.Lock()
+        self._call_uuid = call_uuid
+        self._hangup_cb = hangup_cb
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -40,6 +42,22 @@ class CodexLLMProcessor(FrameProcessor):
             if not text:
                 return
             async with self._lock:
+                end_call, conf = await detect_end_call_intent(text)
+                if end_call and conf >= settings.end_call_threshold:
+                    close_text = settings.end_call_close_text.strip()
+                    if close_text:
+                        await self.push_frame(LLMTextFrame(text=close_text), FrameDirection.DOWNSTREAM)
+                    try:
+                        await self._hangup_cb(delay_s=settings.end_call_hangup_delay_sec)
+                    except Exception:
+                        pass
+                    return
+                if end_call and settings.end_call_confirm and conf >= settings.end_call_confirm_threshold:
+                    await self.push_frame(
+                        LLMTextFrame(text="Do you want me to end the call?"),
+                        FrameDirection.DOWNSTREAM,
+                    )
+                    return
                 try:
                     reply, self._session_id = await run_codex(text, self._session_id)
                 except asyncio.TimeoutError:

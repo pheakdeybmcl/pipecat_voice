@@ -116,7 +116,21 @@ async def ws_fs(ws: WebSocket):
         return
 
     barge_state = BargeInState(call_uuid=call_uuid)
-    llm = CodexLLMProcessor()
+
+    async def _hangup_call(*, delay_s: float = 0.0) -> None:
+        if delay_s > 0:
+            await asyncio.sleep(delay_s)
+        try:
+            await esl_api_command(
+                settings.fs_esl_host,
+                settings.fs_esl_port,
+                settings.fs_esl_password,
+                f"uuid_kill {call_uuid}",
+            )
+        except Exception as exc:
+            logger.warning("uuid_kill failed: %s", exc)
+
+    llm = CodexLLMProcessor(call_uuid=call_uuid, hangup_cb=_hangup_call)
     tts = EdgeTTSProcessor(audio_type="wav")
     sink = FSSinkProcessor(ws, barge_state)
 
@@ -159,9 +173,24 @@ async def ws_fs(ws: WebSocket):
                 settings.vad_silence_frames,
                 settings.vad_rms_threshold,
             )
+            vad.touch()
         except Exception as exc:
             logger.warning("Barge-in VAD disabled: {}", exc)
             vad = None
+
+    async def _silence_hangup_watch() -> None:
+        if settings.silence_hangup_sec <= 0 or vad is None:
+            return
+        while True:
+            await asyncio.sleep(1.0)
+            if barge_state.tts_playing:
+                continue
+            if time.time() - vad.last_speech_ts > settings.silence_hangup_sec:
+                logger.info("Silence timeout reached, hanging up {}", call_uuid)
+                await _hangup_call()
+                break
+
+    silence_task = asyncio.create_task(_silence_hangup_watch())
 
     try:
         while True:
@@ -219,6 +248,7 @@ async def ws_fs(ws: WebSocket):
             pass
         await asyncio.sleep(0)
         keepalive_task.cancel()
+        silence_task.cancel()
         runner_task.cancel()
         with contextlib.suppress(Exception):
             await runner_task

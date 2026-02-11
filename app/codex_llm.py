@@ -243,3 +243,64 @@ async def run_codex(prompt: str, session_id: Optional[str]) -> Tuple[str, Option
                 text = item.get("text", "") or ""
 
     return _humanize_reply(text), new_session_id
+
+
+async def detect_end_call_intent(user_text: str) -> Tuple[bool, float]:
+    if not settings.end_call_enabled:
+        return False, 0.0
+    text = (user_text or "").strip()
+    if not text:
+        return False, 0.0
+
+    sys_prompt = (
+        "You are a classifier that decides if the caller wants to end the call.\n"
+        "Return only JSON in one line with keys: end_call (true/false) and confidence (0-1).\n"
+        "Be conservative: only return true if the user clearly wants to end the call.\n"
+    )
+    full_prompt = f"{sys_prompt}\nUser: {text}\nOutput:"
+
+    cmd = settings.codex_cmd or "codex"
+    args = [cmd, "exec", "--skip-git-repo-check", "--json"]
+    if settings.codex_model:
+        args += ["--model", settings.codex_model]
+    args.append(full_prompt)
+
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        cwd=settings.codex_cd or os.getcwd(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=settings.end_call_timeout_sec
+        )
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        return False, 0.0
+
+    if stderr:
+        logger.debug("end-call stderr: {}", stderr.decode(errors="ignore").strip())
+
+    result_text = ""
+    for raw_line in stdout.decode(errors="ignore").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            evt = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if evt.get("type") == "item.completed":
+            item = evt.get("item") or {}
+            if item.get("type") == "agent_message":
+                result_text = item.get("text", "") or ""
+
+    try:
+        data = json.loads(result_text)
+        end_call = bool(data.get("end_call"))
+        conf = float(data.get("confidence", 0.0))
+        return end_call, max(0.0, min(1.0, conf))
+    except Exception:
+        return False, 0.0

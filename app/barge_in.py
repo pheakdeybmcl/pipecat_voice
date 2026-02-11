@@ -58,6 +58,14 @@ class WebRTCBargeInVAD:
         self._speech_count = 0
         self._silence_count = 0
         self._in_speech = False
+        self._last_speech_ts = time.time()
+
+    def touch(self) -> None:
+        self._last_speech_ts = time.time()
+
+    @property
+    def last_speech_ts(self) -> float:
+        return self._last_speech_ts
 
     def push(self, pcm: bytes) -> str | None:
         if not pcm:
@@ -74,6 +82,7 @@ class WebRTCBargeInVAD:
             if speech and rms >= self._rms_threshold:
                 self._speech_count += 1
                 self._silence_count = 0
+                self._last_speech_ts = time.time()
             else:
                 self._silence_count += 1
                 self._speech_count = 0

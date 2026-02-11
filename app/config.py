@@ -38,6 +38,7 @@ class Settings:
         "true",
         "yes",
     )
+    silence_hangup_sec: int = int(os.getenv("SILENCE_HANGUP_SEC", "45"))
 
     # Deepgram STT
     deepgram_api_key: str = os.getenv("DEEPGRAM_API_KEY", "")
@@ -48,6 +49,15 @@ class Settings:
         "true",
         "yes",
     )
+
+    # End-of-call intent (LLM-based)
+    end_call_enabled: bool = os.getenv("END_CALL_ENABLED", "true").lower() in ("1", "true", "yes")
+    end_call_threshold: float = float(os.getenv("END_CALL_THRESHOLD", "0.85"))
+    end_call_confirm_threshold: float = float(os.getenv("END_CALL_CONFIRM_THRESHOLD", "0.65"))
+    end_call_confirm: bool = os.getenv("END_CALL_CONFIRM", "true").lower() in ("1", "true", "yes")
+    end_call_close_text: str = os.getenv("END_CALL_CLOSE_TEXT", "Thanks for calling. Goodbye.")
+    end_call_timeout_sec: int = int(os.getenv("END_CALL_TIMEOUT_SEC", "12"))
+    end_call_hangup_delay_sec: float = float(os.getenv("END_CALL_HANGUP_DELAY_SEC", "2.0"))
 
     # Codex LLM
     codex_cmd: str = os.getenv("CODEX_CMD", "codex")
