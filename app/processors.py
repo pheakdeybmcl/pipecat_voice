@@ -43,6 +43,12 @@ class CodexLLMProcessor(FrameProcessor):
                 return
             async with self._lock:
                 end_call, conf = await detect_end_call_intent(text)
+                logger.info(
+                    "End-call intent: end_call={} conf={} text={}",
+                    end_call,
+                    f"{conf:.2f}",
+                    text,
+                )
                 if end_call and conf >= settings.end_call_threshold:
                     close_text = settings.end_call_close_text.strip()
                     if close_text:
