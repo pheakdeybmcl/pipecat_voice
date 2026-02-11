@@ -27,6 +27,10 @@ from .barge_in import BargeInState, calc_rms
 from .config import settings
 
 
+_YES_RE = re.compile(r"^(yes|yeah|yep|correct|please do|do it|hang up|end (the )?call|goodbye)\b", re.IGNORECASE)
+_NO_RE = re.compile(r"^(no|nope|not yet|wait|continue|keep going|don't)\b", re.IGNORECASE)
+
+
 class CodexLLMProcessor(FrameProcessor):
     def __init__(self, *, call_uuid: str, hangup_cb):
         super().__init__(name="CodexLLM")
@@ -34,6 +38,7 @@ class CodexLLMProcessor(FrameProcessor):
         self._lock = asyncio.Lock()
         self._call_uuid = call_uuid
         self._hangup_cb = hangup_cb
+        self._awaiting_end_call_confirm = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -42,6 +47,25 @@ class CodexLLMProcessor(FrameProcessor):
             if not text:
                 return
             async with self._lock:
+                if self._awaiting_end_call_confirm:
+                    if _YES_RE.search(text):
+                        self._awaiting_end_call_confirm = False
+                        close_text = settings.end_call_close_text.strip()
+                        if close_text:
+                            await self.push_frame(LLMTextFrame(text=close_text), FrameDirection.DOWNSTREAM)
+                        try:
+                            await self._hangup_cb(delay_s=settings.end_call_hangup_delay_sec)
+                        except Exception:
+                            pass
+                        return
+                    if _NO_RE.search(text):
+                        self._awaiting_end_call_confirm = False
+                        await self.push_frame(
+                            LLMTextFrame(text="Understood. We can continue."),
+                            FrameDirection.DOWNSTREAM,
+                        )
+                        return
+
                 end_call, conf = await detect_end_call_intent(text)
                 logger.info(
                     "End-call intent: end_call={} conf={} text={}",
@@ -59,6 +83,7 @@ class CodexLLMProcessor(FrameProcessor):
                         pass
                     return
                 if end_call and settings.end_call_confirm and conf >= settings.end_call_confirm_threshold:
+                    self._awaiting_end_call_confirm = True
                     await self.push_frame(
                         LLMTextFrame(text="Do you want me to end the call?"),
                         FrameDirection.DOWNSTREAM,
