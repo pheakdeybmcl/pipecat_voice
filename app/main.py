@@ -192,7 +192,8 @@ async def ws_fs(ws: WebSocket):
             await asyncio.sleep(1.0)
             if barge_state.tts_playing:
                 continue
-            if time.time() - vad.last_speech_ts > settings.silence_hangup_sec:
+            last_activity_ts = max(vad.last_speech_ts, barge_state.tts_until)
+            if time.time() - last_activity_ts > settings.silence_hangup_sec:
                 logger.info("Silence timeout reached, hanging up {}", call_uuid)
                 await _hangup_call()
                 break

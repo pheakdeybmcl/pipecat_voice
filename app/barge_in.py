@@ -31,14 +31,18 @@ class BargeInState:
     call_uuid: str
     tts_playing: bool = False
     mute_until: float = 0.0
+    tts_until: float = 0.0
 
     def set_tts_playing(self, duration_s: float) -> None:
         self.tts_playing = True
-        self.mute_until = time.time() + max(0.0, duration_s)
+        until = time.time() + max(0.0, duration_s)
+        self.mute_until = until
+        self.tts_until = until
 
     def stop_tts(self, cooloff_s: float = 0.8) -> None:
         self.tts_playing = False
         self.mute_until = time.time() + max(0.0, cooloff_s)
+        self.tts_until = time.time()
 
     def should_mute(self) -> bool:
         return time.time() < self.mute_until
