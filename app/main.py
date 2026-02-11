@@ -6,11 +6,12 @@ import json
 import time
 import sys
 import types
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket
 from loguru import logger
 
-from pipecat.frames.frames import InputAudioRawFrame, StartFrame, EndFrame, LLMTextFrame
+from pipecat.frames.frames import InputAudioRawFrame, StartFrame, EndFrame, LLMTextFrame, TranscriptionFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -29,6 +30,7 @@ from .config import settings
 from .processors import CodexLLMProcessor, EdgeTTSProcessor, FSSinkProcessor
 from .esl_listener import run_esl_autoplay, esl_api_command
 from .barge_in import BargeInState, WebRTCBargeInVAD
+from .google_stt import GoogleSegmentSTT
 
 app = FastAPI()
 
@@ -51,6 +53,30 @@ _DeepgramSTTService._connect = _dg_connect_no_response
 DeepgramSTTService = _DeepgramSTTService
 
 
+def _client_ip(ws: WebSocket) -> str:
+    if ws.client and ws.client.host:
+        return ws.client.host
+    return "unknown"
+
+
+def _ws_reject_reason(ws: WebSocket) -> str | None:
+    session_id = (ws.query_params.get("session_id", "") or "").strip()
+    if settings.ws_enforce_session_id and not session_id:
+        return "missing_session_id"
+
+    if settings.ws_require_token:
+        token = (ws.query_params.get("token", "") or "").strip()
+        if not token or token != settings.ws_auth_token:
+            return "invalid_ws_token"
+
+    allowed = settings.allowed_ws_ip_set()
+    client_ip = _client_ip(ws)
+    if allowed and client_ip not in allowed:
+        return f"ip_not_allowed:{client_ip}"
+
+    return None
+
+
 @app.on_event("startup")
 async def _startup():
     if settings.fs_esl_enabled:
@@ -66,11 +92,13 @@ async def _shutdown():
         task.cancel()
 
 
-def _build_stt() -> DeepgramSTTService:
+def _build_stt(language: str | None = None) -> DeepgramSTTService:
     if LiveOptions is None:
         raise RuntimeError("Deepgram SDK not installed. Install deepgram-sdk.")
     if not settings.deepgram_api_key:
         raise RuntimeError("DEEPGRAM_API_KEY is not set.")
+
+    stt_language = language or settings.deepgram_language
 
     opts = LiveOptions(
         encoding="linear16",
@@ -81,7 +109,7 @@ def _build_stt() -> DeepgramSTTService:
         smart_format=True,
         vad_events=settings.deepgram_vad_events,
         model=settings.deepgram_model,
-        language=settings.deepgram_language,
+        language=stt_language,
     )
 
     return DeepgramSTTService(
@@ -104,22 +132,62 @@ async def health():
 
 @app.websocket("/ws_fs")
 async def ws_fs(ws: WebSocket):
+    reject_reason = _ws_reject_reason(ws)
+    if reject_reason:
+        logger.warning("WS rejected: {} from {}", reject_reason, _client_ip(ws))
+        await ws.close(code=1008)
+        return
+
     await ws.accept()
-    logger.info("WS connected: {}", ws.client)
+    call_start_ts = time.time()
+    hangup_reason = "remote_disconnect"
+    hangup_sent = False
+    raw_lang = (ws.query_params.get("lang", "") or "").strip().lower()
+    if raw_lang.startswith("km"):
+        call_lang = "km"
+    elif raw_lang.startswith("vi"):
+        call_lang = "vi"
+    else:
+        call_lang = "en"
+    logger.info("WS connected: {} lang={}", ws.client, call_lang)
     call_uuid = ws.query_params.get("session_id", "") or "unknown"
+    use_google_km_stt = call_lang == "km" and settings.stt_provider_km == "google"
 
     try:
-        stt = _build_stt()
+        deepgram_lang = "vi" if call_lang == "vi" else settings.deepgram_language
+        stt = None if use_google_km_stt else _build_stt(deepgram_lang)
+        if not use_google_km_stt:
+            logger.info("Using Deepgram STT language: {}", deepgram_lang)
     except Exception:
         logger.exception("STT init failed")
         await ws.close()
         return
 
+    google_km_stt = None
+    if use_google_km_stt:
+        try:
+            google_km_stt = GoogleSegmentSTT(
+                sample_rate=settings.sample_rate,
+                language_code=settings.google_stt_language,
+                model=settings.google_stt_model,
+                min_utterance_ms=settings.google_stt_min_utterance_ms,
+            )
+            logger.info("Using Google STT for Khmer calls: {}", settings.google_stt_language)
+        except Exception:
+            logger.exception("Google STT init failed")
+            await ws.close()
+            return
+
     barge_state = BargeInState(call_uuid=call_uuid)
 
-    async def _hangup_call(*, delay_s: float = 0.0) -> None:
+    async def _hangup_call(*, delay_s: float = 0.0, reason: str = "unspecified") -> None:
+        nonlocal hangup_reason, hangup_sent
+        if hangup_sent:
+            return
         if delay_s > 0:
             await asyncio.sleep(delay_s)
+        hangup_reason = reason
+        hangup_sent = True
         try:
             await esl_api_command(
                 settings.fs_esl_host,
@@ -130,11 +198,14 @@ async def ws_fs(ws: WebSocket):
         except Exception as exc:
             logger.warning("uuid_kill failed: %s", exc)
 
+    selected_voice = settings.voice_for_lang(call_lang)
+    logger.info("Selected TTS voice for {}: {}", call_lang, selected_voice)
     llm = CodexLLMProcessor(call_uuid=call_uuid, hangup_cb=_hangup_call)
-    tts = EdgeTTSProcessor(audio_type="wav")
+    tts = EdgeTTSProcessor(audio_type="wav", voice=selected_voice)
     sink = FSSinkProcessor(ws, barge_state)
 
-    pipeline = Pipeline([stt, llm, tts, sink])
+    processors = [llm, tts, sink] if stt is None else [stt, llm, tts, sink]
+    pipeline = Pipeline(processors)
     params = PipelineParams(
         audio_in_sample_rate=settings.sample_rate,
         audio_out_sample_rate=settings.sample_rate,
@@ -157,6 +228,8 @@ async def ws_fs(ws: WebSocket):
     last_audio_ts = time.time()
 
     async def _silence_keepalive() -> None:
+        if stt is None:
+            return
         silence_bytes = b"\x00" * int(settings.sample_rate * 0.02) * 2
         while True:
             await asyncio.sleep(1.0)
@@ -195,7 +268,7 @@ async def ws_fs(ws: WebSocket):
             last_activity_ts = max(vad.last_speech_ts, barge_state.tts_until)
             if time.time() - last_activity_ts > settings.silence_hangup_sec:
                 logger.info("Silence timeout reached, hanging up {}", call_uuid)
-                await _hangup_call()
+                await _hangup_call(reason="silence_timeout")
                 break
 
     silence_task = asyncio.create_task(_silence_hangup_watch())
@@ -214,6 +287,7 @@ async def ws_fs(ws: WebSocket):
 
             if data_bytes:
                 last_audio_ts = time.time()
+                evt = None
                 if vad is not None:
                     evt = vad.push(data_bytes)
                     if evt == "speech_start" and barge_state.tts_playing:
@@ -229,12 +303,27 @@ async def ws_fs(ws: WebSocket):
                             logger.info("uuid_break reply: {}", reply)
                         except Exception as exc:
                             logger.warning("uuid_break failed: %s", exc)
-                frame = InputAudioRawFrame(
-                    audio=data_bytes,
-                    sample_rate=settings.sample_rate,
-                    num_channels=1,
-                )
-                await task.queue_frame(frame)
+                if google_km_stt is not None:
+                    if vad is None:
+                        logger.warning("Google Khmer STT requires VAD; skipping audio chunk")
+                        continue
+                    transcript = await google_km_stt.push(data_bytes, evt)
+                    if transcript:
+                        ts = datetime.now(timezone.utc).isoformat()
+                        await task.queue_frame(
+                            TranscriptionFrame(
+                                text=transcript,
+                                user_id=call_uuid,
+                                timestamp=ts,
+                            )
+                        )
+                else:
+                    frame = InputAudioRawFrame(
+                        audio=data_bytes,
+                        sample_rate=settings.sample_rate,
+                        num_channels=1,
+                    )
+                    await task.queue_frame(frame)
             elif data_text:
                 # Ignore ping/metadata from FreeSWITCH
                 try:
@@ -245,6 +334,7 @@ async def ws_fs(ws: WebSocket):
                     pass
     except Exception as exc:
         logger.error("ws error: %s", exc)
+        hangup_reason = "ws_error"
     finally:
         try:
             await task.queue_frame(EndFrame())
@@ -260,3 +350,13 @@ async def ws_fs(ws: WebSocket):
         runner_task.cancel()
         with contextlib.suppress(Exception):
             await runner_task
+        call_duration_s = round(time.time() - call_start_ts, 2)
+        provider = "google" if use_google_km_stt else "deepgram"
+        logger.info(
+            "Call ended uuid={} lang={} stt_provider={} reason={} duration_s={}",
+            call_uuid,
+            call_lang,
+            provider,
+            hangup_reason,
+            call_duration_s,
+        )

@@ -26,6 +26,10 @@ class Settings:
     host: str = os.getenv("HOST", "0.0.0.0")
     port: int = int(os.getenv("PORT", "8000"))
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    ws_require_token: bool = os.getenv("WS_REQUIRE_TOKEN", "false").lower() in ("1", "true", "yes")
+    ws_auth_token: str = os.getenv("WS_AUTH_TOKEN", "")
+    ws_allowed_ips: str = os.getenv("WS_ALLOWED_IPS", "")
+    ws_enforce_session_id: bool = os.getenv("WS_ENFORCE_SESSION_ID", "true").lower() in ("1", "true", "yes")
 
     # Audio
     sample_rate: int = int(os.getenv("FS_SAMPLE_RATE", "16000"))
@@ -49,6 +53,10 @@ class Settings:
         "true",
         "yes",
     )
+    stt_provider_km: str = os.getenv("STT_PROVIDER_KM", "google").lower()
+    google_stt_language: str = os.getenv("GOOGLE_STT_LANGUAGE", "km-KH")
+    google_stt_model: str = os.getenv("GOOGLE_STT_MODEL", "latest_long")
+    google_stt_min_utterance_ms: int = int(os.getenv("GOOGLE_STT_MIN_UTTERANCE_MS", "300"))
 
     # End-of-call intent (LLM-based)
     end_call_enabled: bool = os.getenv("END_CALL_ENABLED", "true").lower() in ("1", "true", "yes")
@@ -74,6 +82,9 @@ class Settings:
 
     # Edge TTS
     tts_voice: str = os.getenv("TTS_VOICE", "en-US-JennyNeural")
+    tts_voice_en: str = os.getenv("TTS_VOICE_EN", tts_voice)
+    tts_voice_vi: str = os.getenv("TTS_VOICE_VI", "vi-VN-HoaiMyNeural")
+    tts_voice_km: str = os.getenv("TTS_VOICE_KM", "km-KH-SreymomNeural")
     tts_format: str = os.getenv(
         "TTS_FORMAT", "riff-16khz-16bit-mono-pcm"
     )
@@ -91,6 +102,19 @@ class Settings:
     fs_esl_host: str = os.getenv("FS_ESL_HOST", "127.0.0.1")
     fs_esl_port: int = int(os.getenv("FS_ESL_PORT", "8021"))
     fs_esl_password: str = os.getenv("FS_ESL_PASSWORD", "ClueCon")
+
+    def voice_for_lang(self, lang: str) -> str:
+        if (lang or "").lower().startswith("vi"):
+            return self.tts_voice_vi
+        if (lang or "").lower().startswith("km"):
+            return self.tts_voice_km
+        return self.tts_voice_en
+
+    def allowed_ws_ip_set(self) -> set[str]:
+        raw = self.ws_allowed_ips.strip()
+        if not raw:
+            return set()
+        return {item.strip() for item in raw.split(",") if item.strip()}
 
 
 settings = Settings()

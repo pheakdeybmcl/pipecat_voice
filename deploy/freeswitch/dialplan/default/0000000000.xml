@@ -34,7 +34,7 @@
       <action application="set" data="lang_digit="/>
       <!-- Give RTP a moment to open so the prompt isn't clipped -->
       <action application="playback" data="silence_stream://500"/>
-      <!-- "Press 1 for English, 2 for Khmer" -->
+      <!-- "Press 1 for English, 2 for Khmer, 3 for Vietnamese" -->
       <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-press.wav"/>
       <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-one.wav"/>
       <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-for.wav"/>
@@ -43,16 +43,22 @@
       <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-two.wav"/>
       <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-for.wav"/>
       <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-language.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-press.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-three.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-for.wav"/>
+      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-language.wav"/>
       <!-- Read 1 digit, 3 tries, 5s timeout -->
       <action application="read" data="1 1 3 5000 # lang_digit /usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-please_enter_extension_followed_by_pound.wav"/>
-      <!-- Map digit to language (default to en) -->
+      <!-- Map digit to language (default to en): 1=en, 2=km, 3=vi -->
       <action application="set" data="lang=${if(${lang_digit}==2,km,en)}"/>
+      <action application="set" data="lang=${if(${lang_digit}==3,vi,${lang})}"/>
 
       <!-- Start audio stream with selected language -->
       <!-- WS host/port from globals (set in vars.xml) -->
       <action application="set" data="app_host=${global_app_host}"/>
       <action application="set" data="app_port=${global_app_port}"/>
-      <action application="set" data="api_result=${bgapi(uuid_audio_stream ${uuid} start ws://${app_host}:${app_port}/ws_fs?session_id=${uuid}&lang=${lang} mono 16k)}"/>
+      <action application="set" data="ws_token=${global_ws_token}"/>
+      <action application="set" data="api_result=${bgapi(uuid_audio_stream ${uuid} start ws://${app_host}:${app_port}/ws_fs?session_id=${uuid}&amp;lang=${lang}&amp;token=${ws_token} mono 16k)}"/>
       <action application="endless_playback" data="silence_stream://-1"/>
     </condition>
   </extension>

@@ -54,7 +54,10 @@ class CodexLLMProcessor(FrameProcessor):
                         if close_text:
                             await self.push_frame(LLMTextFrame(text=close_text), FrameDirection.DOWNSTREAM)
                         try:
-                            await self._hangup_cb(delay_s=settings.end_call_hangup_delay_sec)
+                            await self._hangup_cb(
+                                delay_s=settings.end_call_hangup_delay_sec,
+                                reason="end_call_confirmed",
+                            )
                         except Exception:
                             pass
                         return
@@ -78,7 +81,10 @@ class CodexLLMProcessor(FrameProcessor):
                     if close_text:
                         await self.push_frame(LLMTextFrame(text=close_text), FrameDirection.DOWNSTREAM)
                     try:
-                        await self._hangup_cb(delay_s=settings.end_call_hangup_delay_sec)
+                        await self._hangup_cb(
+                            delay_s=settings.end_call_hangup_delay_sec,
+                            reason="end_call_intent",
+                        )
                     except Exception:
                         pass
                     return
@@ -101,9 +107,10 @@ class CodexLLMProcessor(FrameProcessor):
 
 
 class EdgeTTSProcessor(FrameProcessor):
-    def __init__(self, *, audio_type: str = "raw"):
+    def __init__(self, *, audio_type: str = "raw", voice: Optional[str] = None):
         super().__init__(name="EdgeTTS")
         self._audio_type = audio_type
+        self._voice = voice
         self._lock = asyncio.Lock()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -116,7 +123,7 @@ class EdgeTTSProcessor(FrameProcessor):
                 text = _to_ssml(text, break_ms=settings.tts_break_ms)
             async with self._lock:
                 tmp_path = self._alloc_temp_path()
-                await synthesize_to_wav(text, tmp_path)
+                await synthesize_to_wav(text, tmp_path, voice=self._voice)
                 try:
                     with wave.open(tmp_path, "rb") as wf:
                         sample_rate = wf.getframerate()
