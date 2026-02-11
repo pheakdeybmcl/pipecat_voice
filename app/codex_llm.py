@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import json
 import os
 import re
@@ -137,6 +138,7 @@ def _system_prompt() -> str:
         "Do not mention being an AI.\n"
         "Tone: professional, calm, and helpful. Use clear, natural sentences.\n"
         "Avoid repeating the company name unless the user asks or clarity requires it. Use \"we\" and \"our\" instead.\n"
+        "Vary phrasing and avoid repeating the same refusal wording.\n"
         "Only use a brief acknowledgment (e.g., \"Sure,\" \"Of course,\") when the user explicitly asks for help or a request. "
         "Do not start every reply with an acknowledgment.\n"
         "Keep replies concise (1-3 sentences). Ask a brief follow-up only if needed.\n"
@@ -173,12 +175,23 @@ def _should_refuse(text: str) -> bool:
     return bool(_BLOCKED_RE.search(text))
 
 
+def _refusal_text() -> str:
+    raw = settings.support_refusal.strip()
+    if not raw:
+        return "I can only help with our services, plans, pricing, or support questions."
+    # Allow multiple variants separated by |
+    parts = [p.strip() for p in raw.split("|") if p.strip()]
+    if not parts:
+        return "I can only help with our services, plans, pricing, or support questions."
+    return random.choice(parts)
+
+
 async def run_codex(prompt: str, session_id: Optional[str]) -> Tuple[str, Optional[str]]:
     user_text = (prompt or "").strip()
     if not user_text:
         return "", session_id
     if _should_refuse(user_text):
-        return settings.support_refusal, session_id
+        return _refusal_text(), session_id
 
     sys_prompt = _system_prompt()
     full_prompt = f"{sys_prompt}\nUser: {user_text}\nSupport:"
