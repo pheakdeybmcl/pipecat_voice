@@ -31,12 +31,14 @@ from .processors import CodexLLMProcessor, EdgeTTSProcessor, FSSinkProcessor
 from .esl_listener import run_esl_autoplay, esl_api_command
 from .barge_in import BargeInState, WebRTCBargeInVAD, calc_rms
 from .google_stt import GoogleSegmentSTT
+from .turn_manager import TurnManager
 
 app = FastAPI()
 
 
 # Patch Deepgram STT connect for websockets>=12 (protocol has no .response attribute).
 _orig_dg_connect = _DeepgramSTTService._connect
+_orig_dg_disconnect = _DeepgramSTTService._disconnect
 
 
 async def _dg_connect_no_response(self, *args, **kwargs):
@@ -50,6 +52,20 @@ async def _dg_connect_no_response(self, *args, **kwargs):
 
 
 _DeepgramSTTService._connect = _dg_connect_no_response
+
+
+async def _dg_disconnect_no_await_bool(self, *args, **kwargs):
+    try:
+        return await _orig_dg_disconnect(self, *args, **kwargs)
+    except TypeError as exc:
+        msg = str(exc)
+        if "object bool" in msg and "await" in msg:
+            logger.warning("Deepgram disconnect awaitable mismatch; continuing")
+            return None
+        raise
+
+
+_DeepgramSTTService._disconnect = _dg_disconnect_no_await_bool
 DeepgramSTTService = _DeepgramSTTService
 
 
@@ -185,6 +201,7 @@ async def ws_fs(ws: WebSocket):
             return
 
     barge_state = BargeInState(call_uuid=call_uuid)
+    turn_manager = TurnManager(call_uuid=call_uuid)
 
     async def _hangup_call(*, delay_s: float = 0.0, reason: str = "unspecified") -> None:
         nonlocal hangup_reason, hangup_sent
@@ -206,9 +223,14 @@ async def ws_fs(ws: WebSocket):
 
     selected_voice = settings.voice_for_lang(call_lang)
     logger.info("Selected TTS voice for {}: {}", call_lang, selected_voice)
-    llm = CodexLLMProcessor(call_uuid=call_uuid, call_lang=call_lang, hangup_cb=_hangup_call)
-    tts = EdgeTTSProcessor(audio_type="wav", voice=selected_voice)
-    sink = FSSinkProcessor(ws, barge_state)
+    llm = CodexLLMProcessor(
+        call_uuid=call_uuid,
+        call_lang=call_lang,
+        hangup_cb=_hangup_call,
+        turn_manager=turn_manager,
+    )
+    tts = EdgeTTSProcessor(audio_type="wav", voice=selected_voice, turn_manager=turn_manager)
+    sink = FSSinkProcessor(ws, barge_state, turn_manager=turn_manager)
 
     processors = [llm, tts, sink] if stt is None else [stt, llm, tts, sink]
     pipeline = Pipeline(processors)
@@ -287,6 +309,8 @@ async def ws_fs(ws: WebSocket):
             if msg_type == "websocket.disconnect":
                 code = msg.get("code")
                 hangup_reason = f"remote_disconnect:{code}" if code is not None else "remote_disconnect"
+                llm.deactivate()
+                tts.deactivate()
                 logger.info("WS disconnected by peer uuid={} code={}", call_uuid, code)
                 break
             if msg_type != "websocket.receive":
@@ -298,10 +322,11 @@ async def ws_fs(ws: WebSocket):
             if data_bytes:
                 last_audio_ts = time.time()
                 evt = None
+                rms = 0.0
                 if vad is not None:
                     evt = vad.push(data_bytes)
+                    rms = calc_rms(data_bytes)
                     if settings.barge_in_enabled and evt == "speech_start" and barge_state.tts_playing:
-                        rms = calc_rms(data_bytes)
                         if barge_state.can_barge_in(
                             min_tts_ms=settings.barge_in_min_tts_ms,
                             rms=rms,
@@ -312,6 +337,8 @@ async def ws_fs(ws: WebSocket):
                                 call_uuid,
                                 rms,
                             )
+                            llm.interrupt("barge_in")
+                            tts.interrupt("barge_in")
                             barge_state.stop_tts()
                             try:
                                 reply = await esl_api_command(
@@ -323,6 +350,9 @@ async def ws_fs(ws: WebSocket):
                                 logger.info("uuid_break reply: {}", reply)
                             except Exception as exc:
                                 logger.warning("uuid_break failed: {}", exc)
+                if barge_state.tts_playing:
+                    # Avoid feeding STT with bot playback/echo while TTS is still active.
+                    continue
                 if google_km_stt is not None:
                     if vad is None:
                         logger.warning("Google Khmer STT requires VAD; skipping audio chunk")
@@ -355,11 +385,17 @@ async def ws_fs(ws: WebSocket):
     except WebSocketDisconnect as exc:
         code = getattr(exc, "code", None)
         hangup_reason = f"remote_disconnect:{code}" if code is not None else "remote_disconnect"
+        llm.deactivate()
+        tts.deactivate()
         logger.info("WS disconnected by exception uuid={} code={}", call_uuid, code)
     except Exception:
+        llm.deactivate()
+        tts.deactivate()
         logger.exception("ws error uuid={}", call_uuid)
         hangup_reason = "ws_error"
     finally:
+        llm.deactivate()
+        tts.deactivate()
         try:
             await task.queue_frame(EndFrame())
         except Exception:

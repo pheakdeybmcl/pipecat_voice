@@ -381,6 +381,10 @@ async def _rewrite_reply_for_khmer(text: str) -> str:
             proc.kill()
             await proc.communicate()
             return ""
+        except asyncio.CancelledError:
+            proc.kill()
+            await proc.communicate()
+            raise
 
         if stderr:
             logger.debug("rewrite-km stderr: {}", stderr.decode(errors="ignore").strip())
@@ -467,6 +471,10 @@ async def run_codex(
         proc.kill()
         await proc.communicate()
         raise
+    except asyncio.CancelledError:
+        proc.kill()
+        await proc.communicate()
+        raise
 
     if stderr:
         logger.warning("codex stderr: {}", stderr.decode(errors="ignore").strip())
@@ -534,6 +542,10 @@ async def detect_end_call_intent(user_text: str) -> Tuple[bool, float]:
         proc.kill()
         await proc.communicate()
         return False, 0.0
+    except asyncio.CancelledError:
+        proc.kill()
+        await proc.communicate()
+        raise
 
     if stderr:
         logger.debug("end-call stderr: {}", stderr.decode(errors="ignore").strip())
