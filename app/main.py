@@ -8,7 +8,7 @@ import sys
 import types
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from pipecat.frames.frames import InputAudioRawFrame, StartFrame, EndFrame, LLMTextFrame, TranscriptionFrame
@@ -202,7 +202,7 @@ async def ws_fs(ws: WebSocket):
                 f"uuid_kill {call_uuid}",
             )
         except Exception as exc:
-            logger.warning("uuid_kill failed: %s", exc)
+            logger.warning("uuid_kill failed: {}", exc)
 
     selected_voice = settings.voice_for_lang(call_lang)
     logger.info("Selected TTS voice for {}: {}", call_lang, selected_voice)
@@ -312,7 +312,7 @@ async def ws_fs(ws: WebSocket):
                             )
                             logger.info("uuid_break reply: {}", reply)
                         except Exception as exc:
-                            logger.warning("uuid_break failed: %s", exc)
+                            logger.warning("uuid_break failed: {}", exc)
                 if google_km_stt is not None:
                     if vad is None:
                         logger.warning("Google Khmer STT requires VAD; skipping audio chunk")
@@ -342,8 +342,12 @@ async def ws_fs(ws: WebSocket):
                         continue
                 except json.JSONDecodeError:
                     pass
-    except Exception as exc:
-        logger.error("ws error: %s", exc)
+    except WebSocketDisconnect as exc:
+        code = getattr(exc, "code", None)
+        hangup_reason = f"remote_disconnect:{code}" if code is not None else "remote_disconnect"
+        logger.info("WS disconnected by exception uuid={} code={}", call_uuid, code)
+    except Exception:
+        logger.exception("ws error uuid={}", call_uuid)
         hangup_reason = "ws_error"
     finally:
         try:
