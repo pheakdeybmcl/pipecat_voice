@@ -45,6 +45,15 @@ class Settings:
     barge_in_min_tts_ms: int = int(os.getenv("BARGE_IN_MIN_TTS_MS", "800"))
     barge_in_trigger_rms: float = float(os.getenv("BARGE_IN_TRIGGER_RMS", "0.02"))
     stt_endpoint_debounce_ms: int = int(os.getenv("STT_ENDPOINT_DEBOUNCE_MS", "700"))
+    entity_resolver_enabled: bool = os.getenv("ENTITY_RESOLVER_ENABLED", "true").lower() in ("1", "true", "yes")
+    call_memory_enabled: bool = os.getenv("CALL_MEMORY_ENABLED", "true").lower() in ("1", "true", "yes")
+    clarify_on_low_confidence: bool = os.getenv("CLARIFY_ON_LOW_CONFIDENCE", "true").lower() in ("1", "true", "yes")
+    entity_confirm_threshold: float = float(os.getenv("ENTITY_CONFIRM_THRESHOLD", "0.66"))
+    entity_auto_threshold: float = float(os.getenv("ENTITY_AUTO_THRESHOLD", "0.84"))
+    entity_llm_fallback_enabled: bool = os.getenv("ENTITY_LLM_FALLBACK_ENABLED", "true").lower() in ("1", "true", "yes")
+    entity_llm_fallback_threshold: float = float(os.getenv("ENTITY_LLM_FALLBACK_THRESHOLD", "0.70"))
+    entity_llm_fallback_timeout_sec: int = int(os.getenv("ENTITY_LLM_FALLBACK_TIMEOUT_SEC", "12"))
+    call_memory_turns: int = int(os.getenv("CALL_MEMORY_TURNS", "4"))
     silence_hangup_sec: int = int(os.getenv("SILENCE_HANGUP_SEC", "45"))
 
     # Deepgram STT

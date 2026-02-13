@@ -30,6 +30,7 @@ from .config import settings
 from .processors import CodexLLMProcessor, EdgeTTSProcessor, FSSinkProcessor
 from .esl_listener import run_esl_autoplay, esl_api_command
 from .barge_in import BargeInState, WebRTCBargeInVAD, calc_rms
+from .call_memory import CallMemory
 from .google_stt import GoogleSegmentSTT
 from .turn_manager import TurnManager
 
@@ -202,6 +203,7 @@ async def ws_fs(ws: WebSocket):
 
     barge_state = BargeInState(call_uuid=call_uuid)
     turn_manager = TurnManager(call_uuid=call_uuid)
+    call_memory = CallMemory(max_turns=max(1, settings.call_memory_turns))
 
     async def _hangup_call(*, delay_s: float = 0.0, reason: str = "unspecified") -> None:
         nonlocal hangup_reason, hangup_sent
@@ -228,6 +230,7 @@ async def ws_fs(ws: WebSocket):
         call_lang=call_lang,
         hangup_cb=_hangup_call,
         turn_manager=turn_manager,
+        call_memory=call_memory,
     )
     tts = EdgeTTSProcessor(audio_type="wav", voice=selected_voice, turn_manager=turn_manager)
     sink = FSSinkProcessor(ws, barge_state, turn_manager=turn_manager)

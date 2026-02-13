@@ -22,10 +22,12 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from .barge_in import BargeInState
-from .codex_llm import detect_end_call_intent, run_codex
+from .call_memory import CallMemory
+from .codex_llm import detect_end_call_intent, extract_entities_with_codex, run_codex
 from .config import settings
 from .edge_tts import synthesize_to_wav
 from .frames import TTSBytesFrame
+from .nlu_entities import EntityResolution, resolve_entities
 from .turn_manager import TurnManager, TurnState
 
 
@@ -81,6 +83,17 @@ _INCOMPLETE_RE = re.compile(
 )
 _QUESTION_HINT_RE = re.compile(
     r"\b(what|how|which|where|when|price|cost|plan|service|do you|can you|could you|have)\b",
+    re.IGNORECASE,
+)
+_TAIL_INCOMPLETE_RE = re.compile(
+    r"\b(and|or|about|for|with|regarding|to|in|on)\s*$",
+    re.IGNORECASE,
+)
+_SHORT_ACK_RE = re.compile(
+    r"^(ok|okay|yes|no|thanks|thank you|hello|hi|hmm|uh|uh huh|sure|right|"
+    r"បាន|អរគុណ|សួស្តី|"
+    r"da|vâng|cam on|xin chao|"
+    r"haan|ji|thik|dhanyavaad|namaste)$",
     re.IGNORECASE,
 )
 _KHMER_RE = re.compile(r"[\u1780-\u17FF]")
@@ -171,6 +184,8 @@ def _needs_clarification(text: str) -> bool:
     raw = (text or "").strip()
     if not raw:
         return False
+    if _TAIL_INCOMPLETE_RE.search(raw):
+        return True
     if "?" in raw:
         return False
     if _QUESTION_HINT_RE.search(raw):
@@ -189,8 +204,44 @@ def _needs_clarification(text: str) -> bool:
     return False
 
 
+def _confirm_entity_text(lang: str, entity: str, country: str | None = None) -> str:
+    if _lang_code(lang) == "km":
+        if country:
+            return f"សូមបញ្ជាក់បន្តិច តើអ្នកចង់សួរអំពី {entity} សម្រាប់ {country} មែនទេ?"
+        return f"សូមបញ្ជាក់បន្តិច តើអ្នកចង់សួរអំពី {entity} មែនទេ?"
+    if _lang_code(lang) == "vi":
+        if country:
+            return f"Cho toi xac nhan nhanh: ban dang hoi ve {entity} cho {country}, dung khong?"
+        return f"Cho toi xac nhan nhanh: ban dang hoi ve {entity}, dung khong?"
+    if _lang_code(lang) == "hi":
+        if country:
+            return f"Bas confirm kar doon: aap {country} ke liye {entity} ke baare mein pooch rahe hain, sahi?"
+        return f"Bas confirm kar doon: aap {entity} ke baare mein pooch rahe hain, sahi?"
+    if country:
+        return f"Just to confirm, are you asking about {entity} for {country}?"
+    return f"Just to confirm, are you asking about {entity}?"
+
+
+def _clarify_service_text(lang: str) -> str:
+    if _lang_code(lang) == "km":
+        return "ខ្ញុំអាចជួយបាន។ សូមប្រាប់ឈ្មោះសេវាកម្មដែលអ្នកចង់សួរ ដូចជា eSIM, SIM, Roaming ឬ Wi-Fi។"
+    if _lang_code(lang) == "vi":
+        return "Toi co the ho tro. Ban vui long noi ro ten dich vu ban can, vi du eSIM, SIM, roaming hoac Wi-Fi."
+    if _lang_code(lang) == "hi":
+        return "Main madad kar sakta hoon. Kripya service ka naam clear batayein, jaise eSIM, SIM, roaming ya Wi-Fi."
+    return "I can help with that. Could you say the service name clearly, like eSIM, SIM, roaming, or Wi-Fi?"
+
+
 class CodexLLMProcessor(FrameProcessor):
-    def __init__(self, *, call_uuid: str, call_lang: str, hangup_cb, turn_manager: TurnManager):
+    def __init__(
+        self,
+        *,
+        call_uuid: str,
+        call_lang: str,
+        hangup_cb,
+        turn_manager: TurnManager,
+        call_memory: Optional[CallMemory] = None,
+    ):
         super().__init__(name="CodexLLM")
         self._session_id: Optional[str] = None
         self._lock = asyncio.Lock()
@@ -198,6 +249,9 @@ class CodexLLMProcessor(FrameProcessor):
         self._call_lang = (call_lang or "en").strip().lower()
         self._hangup_cb = hangup_cb
         self._turn_manager = turn_manager
+        self._call_memory = call_memory
+        self._resolver_enabled = settings.entity_resolver_enabled
+        self._memory_enabled = settings.call_memory_enabled and call_memory is not None
         self._awaiting_end_call_confirm = False
         self._active = True
         self._generation = 0
@@ -285,6 +339,96 @@ class CodexLLMProcessor(FrameProcessor):
         await self.push_frame(LLMTextFrame(text=text), FrameDirection.DOWNSTREAM)
         return True
 
+    @staticmethod
+    def _should_entity_fallback(text: str, resolution: EntityResolution) -> bool:
+        if resolution.service and resolution.service_confidence >= settings.entity_confirm_threshold:
+            return False
+        normalized = _normalize_for_match(text)
+        if _SHORT_ACK_RE.match(normalized):
+            return False
+        words = re.findall(r"[A-Za-z0-9\u1780-\u17FF]+", text or "")
+        if len(words) < 2:
+            return False
+        if "?" in text:
+            return True
+        if resolution.likely_service_query or resolution.country is not None:
+            return True
+        # Language-agnostic fallback for substantive turns when deterministic rules miss.
+        return len(words) >= 4
+
+    async def _resolve_text(self, text: str) -> Optional[EntityResolution]:
+        if not self._resolver_enabled:
+            return None
+        resolution = resolve_entities(
+            text,
+            auto_threshold=settings.entity_auto_threshold,
+            confirm_threshold=settings.entity_confirm_threshold,
+        )
+        context_summary = ""
+        if self._memory_enabled and self._call_memory is not None:
+            self._call_memory.add_user_turn(text)
+            context_summary = self._call_memory.summary()
+
+        if settings.entity_llm_fallback_enabled and self._should_entity_fallback(text, resolution):
+            fallback = await extract_entities_with_codex(
+                text,
+                call_lang=self._call_lang,
+                context_summary=context_summary,
+            )
+            fb_conf = float(fallback.get("confidence") or 0.0)
+            if fb_conf >= settings.entity_llm_fallback_threshold:
+                fb_service = (fallback.get("service") or "").strip()
+                if fb_service and fb_service.lower() not in {"unknown", "none", "n/a"}:
+                    if (not resolution.service) or (fb_conf >= resolution.service_confidence):
+                        resolution.service = fb_service
+                        resolution.service_confidence = max(resolution.service_confidence, fb_conf)
+                        resolution.debug_notes.append(f"service_llm:{fb_service}@{fb_conf:.2f}")
+                fb_country = (fallback.get("country") or "").strip()
+                if fb_country and ((not resolution.country) or (fb_conf >= resolution.country_confidence)):
+                    resolution.country = fb_country
+                    resolution.country_confidence = max(resolution.country_confidence, fb_conf)
+                    resolution.debug_notes.append(f"country_llm:{fb_country}@{fb_conf:.2f}")
+                fb_intent = (fallback.get("intent") or "").strip().lower()
+                if fb_intent and ((not resolution.intent) or (fb_conf >= resolution.intent_confidence)):
+                    resolution.intent = fb_intent
+                    resolution.intent_confidence = max(resolution.intent_confidence, fb_conf)
+                    resolution.debug_notes.append(f"intent_llm:{fb_intent}@{fb_conf:.2f}")
+                fb_canonical = (fallback.get("canonical_text") or "").strip()
+                if fb_canonical:
+                    resolution.canonical_text = fb_canonical
+                resolution.likely_service_query = resolution.likely_service_query or bool(resolution.service)
+
+        if self._memory_enabled and self._call_memory is not None:
+            resolution = self._call_memory.apply_context(resolution)
+            self._call_memory.update_from_resolution(resolution)
+
+        if resolution.service and resolution.service_confidence < settings.entity_auto_threshold:
+            if resolution.service_confidence >= settings.entity_confirm_threshold:
+                resolution.needs_confirmation = True
+
+        confs = [
+            c
+            for c in (
+                resolution.service_confidence,
+                resolution.country_confidence,
+                resolution.intent_confidence,
+            )
+            if c > 0
+        ]
+        resolution.confidence = max(confs) if confs else 0.0
+        logger.info(
+            "NLU uuid={} service={}({:.2f}) country={}({:.2f}) intent={} conf={:.2f} notes={}",
+            self._call_uuid,
+            resolution.service or "-",
+            resolution.service_confidence,
+            resolution.country or "-",
+            resolution.country_confidence,
+            resolution.intent or "-",
+            resolution.confidence,
+            "|".join(resolution.debug_notes) if resolution.debug_notes else "-",
+        )
+        return resolution
+
     async def _run_turn(self, text: str, generation: int) -> None:
         try:
             if not self._is_current(generation):
@@ -328,8 +472,25 @@ class CodexLLMProcessor(FrameProcessor):
                 self._turn_manager.on_listening("confirm_prompt")
                 return
 
+            resolution = await self._resolve_text(text)
+            if (
+                resolution
+                and settings.clarify_on_low_confidence
+                and resolution.service
+                and resolution.needs_confirmation
+            ):
+                await self._safe_push_text(
+                    _confirm_entity_text(self._call_lang, resolution.service, resolution.country),
+                    generation,
+                )
+                self._turn_manager.on_listening("confirm_entity")
+                return
+
             if _needs_clarification(text):
-                await self._safe_push_text(_localized_text(self._call_lang, "clarify"), generation)
+                if resolution and resolution.likely_service_query:
+                    await self._safe_push_text(_clarify_service_text(self._call_lang), generation)
+                else:
+                    await self._safe_push_text(_localized_text(self._call_lang, "clarify"), generation)
                 self._turn_manager.on_listening("clarify_prompt")
                 return
 
@@ -358,10 +519,17 @@ class CodexLLMProcessor(FrameProcessor):
                     return
 
             try:
+                prompt_text = text
+                if resolution and resolution.canonical_text:
+                    prompt_text = resolution.canonical_text
+                context_summary = ""
+                if self._memory_enabled and self._call_memory is not None:
+                    context_summary = self._call_memory.summary()
                 reply, self._session_id = await run_codex(
-                    text,
+                    prompt_text,
                     self._session_id,
                     call_lang=self._call_lang,
+                    context_summary=context_summary,
                 )
             except asyncio.TimeoutError:
                 reply = _localized_text(self._call_lang, "timeout")

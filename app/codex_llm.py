@@ -353,6 +353,28 @@ def _refusal_text_for_lang(call_lang: str) -> str:
     return random.choice(parts)
 
 
+def _parse_json_object(raw: str) -> dict:
+    text = (raw or "").strip()
+    if not text:
+        return {}
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", text)
+        text = re.sub(r"\n?```$", "", text).strip()
+    try:
+        obj = json.loads(text)
+        return obj if isinstance(obj, dict) else {}
+    except Exception:
+        pass
+    m = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if not m:
+        return {}
+    try:
+        obj = json.loads(m.group(0))
+        return obj if isinstance(obj, dict) else {}
+    except Exception:
+        return {}
+
+
 async def _rewrite_reply_for_khmer(text: str) -> str:
     source = (text or "").strip()
     if not source:
@@ -436,6 +458,7 @@ async def run_codex(
     session_id: Optional[str],
     *,
     call_lang: str = "en",
+    context_summary: str = "",
 ) -> Tuple[str, Optional[str]]:
     user_text = (prompt or "").strip()
     if not user_text:
@@ -444,7 +467,9 @@ async def run_codex(
         return _refusal_text_for_lang(call_lang), session_id
 
     sys_prompt = _system_prompt(call_lang)
-    full_prompt = f"{sys_prompt}\nUser: {user_text}\nSupport:"
+    ctx = (context_summary or "").strip()
+    context_block = f"Conversation context (inferred): {ctx}\n" if ctx else ""
+    full_prompt = f"{sys_prompt}\n{context_block}User: {user_text}\nSupport:"
 
     cmd = settings.codex_cmd or "codex"
     args = [cmd, "exec", "--skip-git-repo-check", "--json"]
@@ -506,6 +531,93 @@ async def run_codex(
                 reply = rewritten
 
     return reply, new_session_id
+
+
+async def extract_entities_with_codex(
+    user_text: str,
+    *,
+    call_lang: str = "en",
+    context_summary: str = "",
+) -> dict:
+    text = (user_text or "").strip()
+    if not text:
+        return {}
+    lang_name = _language_name(call_lang)
+    context = (context_summary or "").strip()
+    context_line = f"Context: {context}\n" if context else ""
+    prompt = (
+        "Extract telecom support entities from user text.\n"
+        "Return exactly one JSON object with keys:\n"
+        '- "service": string (canonical English label when possible, e.g. "eSIM", "SIM", "Roaming", "Wi-Fi", or "")\n'
+        '- "country": string (country name or "")\n'
+        '- "intent": string (pricing|availability|setup|coverage|support|other)\n'
+        '- "confidence": number 0..1\n'
+        '- "canonical_text": cleaned text preserving user meaning\n'
+        "No markdown, no explanation.\n"
+        f"User language: {lang_name}\n"
+        f"{context_line}"
+        f"User text: {text}\n"
+    )
+
+    cmd = settings.codex_cmd or "codex"
+    args = [cmd, "exec", "--skip-git-repo-check", "--json"]
+    if settings.codex_model:
+        args += ["--model", settings.codex_model]
+    if settings.codex_profile:
+        args += ["--profile", settings.codex_profile]
+    args.append(prompt)
+
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        cwd=settings.codex_cd or os.getcwd(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=settings.entity_llm_fallback_timeout_sec
+        )
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        return {}
+    except asyncio.CancelledError:
+        proc.kill()
+        await proc.communicate()
+        raise
+
+    if stderr:
+        logger.debug("entity-extract stderr: {}", stderr.decode(errors="ignore").strip())
+
+    payload = ""
+    for raw_line in stdout.decode(errors="ignore").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            evt = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if evt.get("type") == "item.completed":
+            item = evt.get("item") or {}
+            if item.get("type") == "agent_message":
+                payload = (item.get("text", "") or "").strip()
+
+    parsed = _parse_json_object(payload)
+    if not parsed:
+        return {}
+    out = {
+        "service": str(parsed.get("service", "") or "").strip(),
+        "country": str(parsed.get("country", "") or "").strip(),
+        "intent": str(parsed.get("intent", "") or "").strip(),
+        "canonical_text": str(parsed.get("canonical_text", "") or "").strip(),
+        "confidence": 0.0,
+    }
+    try:
+        out["confidence"] = max(0.0, min(1.0, float(parsed.get("confidence", 0.0))))
+    except Exception:
+        out["confidence"] = 0.0
+    return out
 
 
 async def detect_end_call_intent(user_text: str) -> Tuple[bool, float]:
