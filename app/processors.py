@@ -336,6 +336,7 @@ class CodexLLMProcessor(FrameProcessor):
     async def _safe_push_text(self, text: str, generation: int) -> bool:
         if not text or not self._is_current(generation):
             return False
+        logger.info("BOT reply uuid={} text={}", self._call_uuid, re.sub(r"\s+", " ", text).strip())
         await self.push_frame(LLMTextFrame(text=text), FrameDirection.DOWNSTREAM)
         return True
 
@@ -348,6 +349,8 @@ class CodexLLMProcessor(FrameProcessor):
             return False
         words = re.findall(r"[A-Za-z0-9\u1780-\u17FF]+", text or "")
         if len(words) < 2:
+            return False
+        if "?" in text and not (resolution.likely_service_query or resolution.country is not None):
             return False
         if "?" in text:
             return True

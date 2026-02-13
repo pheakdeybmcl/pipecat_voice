@@ -74,7 +74,7 @@ _SERVICE_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 _COUNTRY_ALIASES: dict[str, tuple[str, ...]] = {
-    "Singapore": ("singapore", "sg", "សិង្ហបុរី", "sing", "xin ga po", "सिंगापुर"),
+    "Singapore": ("singapore", "sg", "សិង្ហបុរី", "xin ga po", "सिंगापुर"),
     "Thailand": ("thailand", "thai", "ថៃ", "thai lan", "thái lan", "थाईलैंड"),
     "Vietnam": ("vietnam", "viet nam", "វៀតណាម", "việt nam", "वियतनाम"),
     "Cambodia": ("cambodia", "khmer", "កម្ពុជា", "campuchia", "कंबोडिया"),
@@ -176,19 +176,36 @@ def _best_alias_match(text_norm: str, aliases_by_name: dict[str, tuple[str, ...]
             if _contains_phrase(text_norm, alias_norm):
                 score = 0.99 if len(alias_norm) > 3 else 0.95
             else:
-                # Fuzzy on short n-grams to recover ASR errors like "isima" -> "esim".
+                # Conservative fuzzy matching: avoid false positives on unrelated words.
                 score = 0.0
                 words = text_norm.split()
                 if not words:
                     continue
                 alias_words = alias_norm.split()
                 n = len(alias_words)
-                for i in range(0, len(words)):
-                    cand = " ".join(words[i : i + n]) if n > 0 else words[i]
+                if n <= 0:
+                    continue
+                alias_chars = len(alias_norm.replace(" ", ""))
+                # Very short aliases should match exactly only.
+                if alias_chars < 4:
+                    continue
+                if alias_chars <= 4:
+                    threshold = 0.90
+                elif alias_chars <= 6:
+                    threshold = 0.87
+                else:
+                    threshold = 0.84
+                for i in range(0, len(words) - n + 1):
+                    cand = " ".join(words[i : i + n])
                     if not cand:
                         continue
+                    cand_chars = len(cand.replace(" ", ""))
+                    if cand_chars < 4:
+                        continue
+                    if abs(cand_chars - alias_chars) > 2:
+                        continue
                     ratio = SequenceMatcher(a=cand, b=alias_norm).ratio()
-                    if ratio > score:
+                    if ratio >= threshold and ratio > score:
                         score = ratio
             if score > best_score:
                 best_name = name
