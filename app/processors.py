@@ -26,7 +26,7 @@ from .codex_llm import detect_end_call_intent, run_codex
 from .config import settings
 from .edge_tts import synthesize_to_wav
 from .frames import TTSBytesFrame
-from .turn_manager import TurnManager
+from .turn_manager import TurnManager, TurnState
 
 
 _YES_RE = re.compile(
@@ -76,8 +76,17 @@ _CONTINUE_HINT_RE = re.compile(
 )
 
 _INCOMPLETE_RE = re.compile(
-    r"^(with|and|or|for|about|regarding|looking for|need|want|interested in|can you|could you)\b",
+    r"^(with|and|or|for|about|regarding|looking for|need|want|interested in)\b",
     re.IGNORECASE,
+)
+_QUESTION_HINT_RE = re.compile(
+    r"\b(what|how|which|where|when|price|cost|plan|service|do you|can you|could you|have)\b",
+    re.IGNORECASE,
+)
+_KHMER_RE = re.compile(r"[\u1780-\u17FF]")
+_KHMER_QUESTION_HINT_RE = re.compile(
+    r"(ប៉ុន្មាន|យ៉ាងម៉េច|ម៉េច|អ្វី|មួយណា|មាន.*ទេ|តម្លៃ|ដែរ)$|"
+    r"(ប៉ុន្មាន|យ៉ាងម៉េច|ម៉េច|អ្វី|មួយណា|តម្លៃ)",
 )
 
 _DEFAULT_END_CALL_CLOSE_TEXT = "Thanks for calling. Goodbye."
@@ -159,11 +168,21 @@ def _local_end_intent(text: str) -> str:
 
 
 def _needs_clarification(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if "?" in raw:
+        return False
+    if _QUESTION_HINT_RE.search(raw):
+        return False
+    if _KHMER_RE.search(raw) and _KHMER_QUESTION_HINT_RE.search(raw):
+        return False
+
     t = _normalize_for_match(text)
     if not t:
         return False
     words = re.findall(r"[A-Za-z0-9\u1780-\u17FF]+", t)
-    if len(words) <= 3 and "?" not in text:
+    if len(words) <= 3:
         return True
     if _INCOMPLETE_RE.match(t) and len(words) <= 8:
         return True
@@ -228,6 +247,9 @@ class CodexLLMProcessor(FrameProcessor):
         async with self._lock:
             if not self._active:
                 return
+            if self._turn_manager.state == TurnState.SPEAKING:
+                logger.debug("Drop transcript while speaking uuid={} text={}", self._call_uuid, text)
+                return
             self._pending_text.append(text)
             if self._active_task and not self._active_task.done():
                 self._generation += 1
@@ -243,6 +265,10 @@ class CodexLLMProcessor(FrameProcessor):
             return
         async with self._lock:
             if not self._active:
+                return
+            if self._turn_manager.state == TurnState.SPEAKING:
+                # Wait until bot speech completes before committing another turn.
+                self._debounce_task = asyncio.create_task(self._debounce_and_commit())
                 return
             text = self._merge_pending()
             self._pending_text.clear()
