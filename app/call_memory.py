@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import re
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 
 from .nlu_entities import EntityResolution
+
+_WORD_RE = re.compile(r"[A-Za-z0-9\u1780-\u17FF]+")
+_REFERENTIAL_RE = re.compile(
+    r"\b(it|that|this|those|these|again|more|continue|what|how|why|which|"
+    r"វា|នេះ|នោះ|បន្ត|ម្ដងទៀត|"
+    r"no|do|doan|nay|kia|"
+    r"yeh|voh|dobara)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -32,7 +42,19 @@ class CallMemory:
         self.recent_user_turns.append(t)
         self.updated_at = time.time()
 
-    def apply_context(self, resolution: EntityResolution) -> EntityResolution:
+    @staticmethod
+    def _allow_intent_context(raw_text: str) -> bool:
+        t = (raw_text or "").strip().lower()
+        if not t:
+            return True
+        words = _WORD_RE.findall(t)
+        if len(words) <= 4:
+            return True
+        if _REFERENTIAL_RE.search(t) and len(words) <= 8:
+            return True
+        return False
+
+    def apply_context(self, resolution: EntityResolution, *, raw_text: str = "") -> EntityResolution:
         # Fill missing fields from recent context (same call only).
         if resolution.service is None and self.service and self.service_confidence >= 0.8:
             resolution.service = self.service
@@ -44,7 +66,12 @@ class CallMemory:
             resolution.country_confidence = max(resolution.country_confidence, self.country_confidence * 0.9)
             resolution.inferred_from_context = True
             resolution.debug_notes.append("country_from_context")
-        if resolution.intent is None and self.intent and self.intent_confidence >= 0.8:
+        if (
+            resolution.intent is None
+            and self.intent
+            and self.intent_confidence >= 0.8
+            and self._allow_intent_context(raw_text)
+        ):
             resolution.intent = self.intent
             resolution.intent_confidence = max(resolution.intent_confidence, self.intent_confidence * 0.9)
             resolution.inferred_from_context = True
@@ -77,4 +104,3 @@ class CallMemory:
         if not parts:
             return ""
         return ", ".join(parts)
-

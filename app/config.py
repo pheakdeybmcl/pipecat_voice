@@ -86,6 +86,7 @@ class Settings:
     codex_model: str = os.getenv("CODEX_MODEL", "")
     codex_profile: str = os.getenv("CODEX_PROFILE", "")
     codex_timeout_sec: int = int(os.getenv("CODEX_TIMEOUT_SEC", "60"))
+    max_voice_reply_words: int = int(os.getenv("MAX_VOICE_REPLY_WORDS", "55"))
     company_profile_path_en: str = os.getenv("COMPANY_PROFILE_PATH_EN", "company_profile.en.json")
     company_profile_path_km: str = os.getenv("COMPANY_PROFILE_PATH_KM", "company_profile.km.json")
     company_profile_path_vi: str = os.getenv("COMPANY_PROFILE_PATH_VI", "company_profile.vi.json")

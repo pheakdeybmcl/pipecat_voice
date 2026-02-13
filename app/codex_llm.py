@@ -288,6 +288,18 @@ def _trim_sentences(text: str, max_sentences: int = 2) -> str:
     return " ".join(parts[:max_sentences]).strip()
 
 
+def _trim_words(text: str, max_words: int = 55) -> str:
+    if max_words <= 0:
+        return text.strip()
+    tokens = (text or "").strip().split()
+    if len(tokens) <= max_words:
+        return (text or "").strip()
+    trimmed = " ".join(tokens[:max_words]).rstrip(",;:")
+    if not trimmed.endswith((".", "!", "?")):
+        trimmed += "."
+    return trimmed
+
+
 _LEADING_LABEL_RE = re.compile(
     r"(^|[.!?]\s+)([A-Za-z\u1780-\u17FF][A-Za-z0-9\u1780-\u17FF\s\-]{1,30}):\s+"
 )
@@ -311,6 +323,7 @@ def _humanize_reply(text: str) -> str:
     if not t:
         return t
     t = _trim_sentences(t, 2)
+    t = _trim_words(t, settings.max_voice_reply_words)
     return t
 
 

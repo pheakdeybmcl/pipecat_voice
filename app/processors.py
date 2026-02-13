@@ -402,7 +402,7 @@ class CodexLLMProcessor(FrameProcessor):
                 resolution.likely_service_query = resolution.likely_service_query or bool(resolution.service)
 
         if self._memory_enabled and self._call_memory is not None:
-            resolution = self._call_memory.apply_context(resolution)
+            resolution = self._call_memory.apply_context(resolution, raw_text=text)
             self._call_memory.update_from_resolution(resolution)
 
         if resolution.service and resolution.service_confidence < settings.entity_auto_threshold:
