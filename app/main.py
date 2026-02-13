@@ -250,7 +250,8 @@ async def ws_fs(ws: WebSocket):
     keepalive_task = asyncio.create_task(_silence_keepalive())
 
     vad = None
-    if settings.barge_in_enabled:
+    vad_required = settings.barge_in_enabled or use_google_km_stt or settings.silence_hangup_sec > 0
+    if vad_required:
         try:
             vad = WebRTCBargeInVAD(
                 settings.sample_rate,
@@ -261,7 +262,7 @@ async def ws_fs(ws: WebSocket):
             )
             vad.touch()
         except Exception as exc:
-            logger.warning("Barge-in VAD disabled: {}", exc)
+            logger.warning("VAD disabled: {}", exc)
             vad = None
 
     async def _silence_hangup_watch() -> None:
@@ -299,7 +300,7 @@ async def ws_fs(ws: WebSocket):
                 evt = None
                 if vad is not None:
                     evt = vad.push(data_bytes)
-                    if evt == "speech_start" and barge_state.tts_playing:
+                    if settings.barge_in_enabled and evt == "speech_start" and barge_state.tts_playing:
                         logger.info("Barge-in detected, stopping TTS for {}", call_uuid)
                         barge_state.stop_tts()
                         try:
