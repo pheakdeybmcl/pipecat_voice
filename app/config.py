@@ -34,8 +34,8 @@ class Settings:
     # Audio
     sample_rate: int = int(os.getenv("FS_SAMPLE_RATE", "16000"))
     vad_mode: int = int(os.getenv("VAD_MODE", "2"))
-    vad_speech_frames: int = int(os.getenv("VAD_SPEECH_FRAMES", "3"))
-    vad_silence_frames: int = int(os.getenv("VAD_SILENCE_FRAMES", "8"))
+    vad_speech_frames: int = int(os.getenv("VAD_SPEECH_FRAMES", "4"))
+    vad_silence_frames: int = int(os.getenv("VAD_SILENCE_FRAMES", "5"))
     vad_rms_threshold: float = float(os.getenv("VAD_RMS_THRESHOLD", "0.004"))
     barge_in_enabled: bool = os.getenv("BARGE_IN_ENABLED", "true").lower() in (
         "1",
@@ -48,6 +48,7 @@ class Settings:
     deepgram_api_key: str = os.getenv("DEEPGRAM_API_KEY", "")
     deepgram_model: str = os.getenv("DEEPGRAM_MODEL", "nova-3-general")
     deepgram_language: str = os.getenv("DEEPGRAM_LANGUAGE", "en")
+    deepgram_language_hi: str = os.getenv("DEEPGRAM_LANGUAGE_HI", "hi")
     deepgram_vad_events: bool = os.getenv("DEEPGRAM_VAD_EVENTS", "true").lower() in (
         "1",
         "true",
@@ -56,10 +57,10 @@ class Settings:
     stt_provider_km: str = os.getenv("STT_PROVIDER_KM", "google").lower()
     google_stt_language: str = os.getenv("GOOGLE_STT_LANGUAGE", "km-KH")
     google_stt_model: str = os.getenv("GOOGLE_STT_MODEL", "latest_long")
-    google_stt_min_utterance_ms: int = int(os.getenv("GOOGLE_STT_MIN_UTTERANCE_MS", "300"))
+    google_stt_min_utterance_ms: int = int(os.getenv("GOOGLE_STT_MIN_UTTERANCE_MS", "200"))
 
     # End-of-call intent (LLM-based)
-    end_call_enabled: bool = os.getenv("END_CALL_ENABLED", "true").lower() in ("1", "true", "yes")
+    end_call_enabled: bool = os.getenv("END_CALL_ENABLED", "false").lower() in ("1", "true", "yes")
     end_call_threshold: float = float(os.getenv("END_CALL_THRESHOLD", "0.85"))
     end_call_confirm_threshold: float = float(os.getenv("END_CALL_CONFIRM_THRESHOLD", "0.65"))
     end_call_confirm: bool = os.getenv("END_CALL_CONFIRM", "true").lower() in ("1", "true", "yes")
@@ -73,6 +74,10 @@ class Settings:
     codex_model: str = os.getenv("CODEX_MODEL", "")
     codex_profile: str = os.getenv("CODEX_PROFILE", "")
     codex_timeout_sec: int = int(os.getenv("CODEX_TIMEOUT_SEC", "60"))
+    company_profile_path_en: str = os.getenv("COMPANY_PROFILE_PATH_EN", "company_profile.en.json")
+    company_profile_path_km: str = os.getenv("COMPANY_PROFILE_PATH_KM", "company_profile.km.json")
+    company_profile_path_vi: str = os.getenv("COMPANY_PROFILE_PATH_VI", "company_profile.vi.json")
+    company_profile_path_hi: str = os.getenv("COMPANY_PROFILE_PATH_HI", "company_profile.hi.json")
     company_profile_path: str = os.getenv("COMPANY_PROFILE_PATH", "company_profile.json")
     support_only: bool = os.getenv("SUPPORT_ONLY", "true").lower() in ("1", "true", "yes")
     support_refusal: str = os.getenv(
@@ -85,6 +90,7 @@ class Settings:
     tts_voice_en: str = os.getenv("TTS_VOICE_EN", tts_voice)
     tts_voice_vi: str = os.getenv("TTS_VOICE_VI", "vi-VN-HoaiMyNeural")
     tts_voice_km: str = os.getenv("TTS_VOICE_KM", "km-KH-SreymomNeural")
+    tts_voice_hi: str = os.getenv("TTS_VOICE_HI", "hi-IN-SwaraNeural")
     tts_format: str = os.getenv(
         "TTS_FORMAT", "riff-16khz-16bit-mono-pcm"
     )
@@ -108,6 +114,8 @@ class Settings:
             return self.tts_voice_vi
         if (lang or "").lower().startswith("km"):
             return self.tts_voice_km
+        if (lang or "").lower().startswith("hi"):
+            return self.tts_voice_hi
         return self.tts_voice_en
 
     def allowed_ws_ip_set(self) -> set[str]:
@@ -115,6 +123,16 @@ class Settings:
         if not raw:
             return set()
         return {item.strip() for item in raw.split(",") if item.strip()}
+
+    def company_profile_path_for_lang(self, lang: str) -> str:
+        l = (lang or "").strip().lower()
+        if l.startswith("km"):
+            return self.company_profile_path_km or self.company_profile_path
+        if l.startswith("vi"):
+            return self.company_profile_path_vi or self.company_profile_path
+        if l.startswith("hi"):
+            return self.company_profile_path_hi or self.company_profile_path
+        return self.company_profile_path_en or self.company_profile_path
 
 
 settings = Settings()

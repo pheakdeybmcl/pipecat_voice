@@ -147,6 +147,8 @@ async def ws_fs(ws: WebSocket):
         call_lang = "km"
     elif raw_lang.startswith("vi"):
         call_lang = "vi"
+    elif raw_lang.startswith("hi"):
+        call_lang = "hi"
     else:
         call_lang = "en"
     logger.info("WS connected: {} lang={}", ws.client, call_lang)
@@ -154,7 +156,11 @@ async def ws_fs(ws: WebSocket):
     use_google_km_stt = call_lang == "km" and settings.stt_provider_km == "google"
 
     try:
-        deepgram_lang = "vi" if call_lang == "vi" else settings.deepgram_language
+        deepgram_lang = settings.deepgram_language
+        if call_lang == "vi":
+            deepgram_lang = "vi"
+        elif call_lang == "hi":
+            deepgram_lang = settings.deepgram_language_hi
         stt = None if use_google_km_stt else _build_stt(deepgram_lang)
         if not use_google_km_stt:
             logger.info("Using Deepgram STT language: {}", deepgram_lang)
@@ -200,7 +206,7 @@ async def ws_fs(ws: WebSocket):
 
     selected_voice = settings.voice_for_lang(call_lang)
     logger.info("Selected TTS voice for {}: {}", call_lang, selected_voice)
-    llm = CodexLLMProcessor(call_uuid=call_uuid, hangup_cb=_hangup_call)
+    llm = CodexLLMProcessor(call_uuid=call_uuid, call_lang=call_lang, hangup_cb=_hangup_call)
     tts = EdgeTTSProcessor(audio_type="wav", voice=selected_voice)
     sink = FSSinkProcessor(ws, barge_state)
 
@@ -278,6 +284,9 @@ async def ws_fs(ws: WebSocket):
             msg = await ws.receive()
             msg_type = msg.get("type")
             if msg_type == "websocket.disconnect":
+                code = msg.get("code")
+                hangup_reason = f"remote_disconnect:{code}" if code is not None else "remote_disconnect"
+                logger.info("WS disconnected by peer uuid={} code={}", call_uuid, code)
                 break
             if msg_type != "websocket.receive":
                 continue

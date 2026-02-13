@@ -124,7 +124,8 @@ class ESLClient:
                 )
                 continue
             logger.info("ESL play event file: {}", file_path)
-            cmd = f"uuid_broadcast {uuid} {file_path} aleg"
+            cmd = f"uuid_broadcast {uuid} {file_path} both"
+            logger.info("ESL uuid_broadcast cmd: {}", cmd)
             _, reply = await self.api(cmd)
             logger.info("ESL uuid_broadcast: {}", reply.strip())
 

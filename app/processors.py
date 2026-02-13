@@ -4,14 +4,14 @@ import asyncio
 import base64
 import json
 import os
+import re
 import tempfile
 import uuid
 import wave
-import re
 from typing import Optional
 
-from loguru import logger
 from fastapi import WebSocket
+from loguru import logger
 
 from pipecat.frames.frames import (
     Frame,
@@ -20,23 +20,140 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from .codex_llm import run_codex, detect_end_call_intent
+from .barge_in import BargeInState, calc_rms
+from .codex_llm import detect_end_call_intent, run_codex
+from .config import settings
 from .edge_tts import synthesize_to_wav
 from .frames import TTSBytesFrame
-from .barge_in import BargeInState, calc_rms
-from .config import settings
 
 
-_YES_RE = re.compile(r"^(yes|yeah|yep|correct|please do|do it|hang up|end (the )?call|goodbye)\b", re.IGNORECASE)
-_NO_RE = re.compile(r"^(no|nope|not yet|wait|continue|keep going|don't)\b", re.IGNORECASE)
+_YES_RE = re.compile(
+    r"^(yes|yeah|yep|correct|please do|do it|hang up|end (the )?call|goodbye|"
+    r"haan|haan ji|theek hai|band karo|khatm karo|"
+    r"co|dong y|ket thuc|tam biet|"
+    r"បាទ|ចាស|យល់ព្រម|បិទការហៅ)",
+    re.IGNORECASE,
+)
+
+_NO_RE = re.compile(
+    r"^(no|nope|not yet|wait|continue|keep going|don't|"
+    r"nahi|abhi nahi|mat karo|"
+    r"khong|chua|tiep tuc|"
+    r"ទេ|មិនទាន់|បន្ត)",
+    re.IGNORECASE,
+)
+
+# Clear end-call phrases: hang up immediately with farewell.
+_CLEAR_END_RE = re.compile(
+    r"^(bye|goodbye|hang up|end (the )?call|end call|"
+    r"i am done|i'm done|im done|that'?s all|nothing else|no more questions|"
+    r"tam biet|k?t thuc (cuoc goi)?|ket thuc (cuoc goi)?|toi xong roi|toi xong|"
+    r"namaste|alvida|call band karo|main done hu|main done hoon|mujhe jana hai|"
+    r"លាហើយ|បញ្ចប់ការហៅ|ខ្ញុំរួចរាល់ហើយ|ខ្ញុំចប់ហើយ|អស់ហើយ|"
+    r"au revoir)$",
+    re.IGNORECASE,
+)
+
+# Ambiguous endings: confirm before hangup.
+_AMBIGUOUS_END_RE = re.compile(
+    r"^(ok|okay|done|thanks|thank you|thank you so much|"
+    r"cam on|ok cam on|"
+    r"thik hai|dhanyavaad|shukriya|"
+    r"អរគុណ|បានហើយ|អូខេ)$",
+    re.IGNORECASE,
+)
+
+# If caller clearly asks to continue or asks another question, do not treat as end-call.
+_CONTINUE_HINT_RE = re.compile(
+    r"(one more question|another question|i still have|tell me more|explain more|"
+    r"not done|not finished|continue|keep talking|"
+    r"toi con cau hoi|cho toi hoi|giai thich them|tiep tuc|"
+    r"mere paas (ek )?aur sawaal|abhi khatam nahi|thoda aur batao|"
+    r"ខ្ញុំនៅមានសំណួរ|សូមពន្យល់បន្ថែម|មិនទាន់ចប់|បន្ត)",
+    re.IGNORECASE,
+)
+
+_DEFAULT_END_CALL_CLOSE_TEXT = "Thanks for calling. Goodbye."
+
+
+def _lang_code(lang: str) -> str:
+    l = (lang or "").strip().lower()
+    if l.startswith("km"):
+        return "km"
+    if l.startswith("vi"):
+        return "vi"
+    if l.startswith("hi"):
+        return "hi"
+    return "en"
+
+
+def _localized_text(lang: str, key: str) -> str:
+    lc = _lang_code(lang)
+    table = {
+        "en": {
+            "continue": "Understood. We can continue.",
+            "confirm_end": "Do you want me to end the call?",
+            "timeout": "Sorry, I had trouble responding. Please try again.",
+            "close_default": "Thanks for calling. Goodbye.",
+        },
+        "km": {
+            "continue": "បានយល់។ យើងអាចបន្តការហៅបាន។",
+            "confirm_end": "តើអ្នកចង់បញ្ចប់ការហៅឥឡូវនេះទេ?",
+            "timeout": "សូមអភ័យទោស ខ្ញុំឆ្លើយតបមានបញ្ហាបន្តិច។ សូមព្យាយាមម្តងទៀត។",
+            "close_default": "សូមអរគុណសម្រាប់ការហៅមកកាន់យើង។ លាហើយ។",
+        },
+        "vi": {
+            "continue": "Da hieu. Chung ta co the tiep tuc cuoc goi.",
+            "confirm_end": "Ban co muon ket thuc cuoc goi bay gio khong?",
+            "timeout": "Xin loi, toi gap su co khi phan hoi. Ban vui long thu lai.",
+            "close_default": "Cam on ban da goi. Tam biet.",
+        },
+        "hi": {
+            "continue": "Samajh gaya. Hum baat jari rakh sakte hain.",
+            "confirm_end": "Kya aap chahte hain ki main ab call band kar doon?",
+            "timeout": "Maaf kijiye, jawab dene mein dikkat aayi. Kripya dobara koshish karein.",
+            "close_default": "Call karne ke liye dhanyavaad. Namaste.",
+        },
+    }
+    return table.get(lc, table["en"]).get(key, table["en"][key])
+
+
+def _close_text_for_lang(lang: str) -> str:
+    configured = settings.end_call_close_text.strip()
+    if not configured or configured == _DEFAULT_END_CALL_CLOSE_TEXT:
+        return _localized_text(lang, "close_default")
+    return configured
+
+
+def _normalize_for_match(text: str) -> str:
+    # Normalize punctuation/spacing for short intent phrases.
+    t = (text or "").strip().lower()
+    t = re.sub(r"[.!?។၊]+", "", t)
+    t = re.sub(r"\s+", " ", t)
+    return t
+
+
+def _local_end_intent(text: str) -> str:
+    """Return one of: end_now, confirm, continue."""
+    t = _normalize_for_match(text)
+    if not t:
+        return "continue"
+    if _CONTINUE_HINT_RE.search(t):
+        return "continue"
+    if _CLEAR_END_RE.match(t):
+        return "end_now"
+    if _AMBIGUOUS_END_RE.match(t):
+        return "confirm"
+    return "continue"
 
 
 class CodexLLMProcessor(FrameProcessor):
-    def __init__(self, *, call_uuid: str, hangup_cb):
+    def __init__(self, *, call_uuid: str, call_lang: str, hangup_cb):
         super().__init__(name="CodexLLM")
         self._session_id: Optional[str] = None
         self._lock = asyncio.Lock()
         self._call_uuid = call_uuid
+        self._call_lang = (call_lang or "en").strip().lower()
         self._hangup_cb = hangup_cb
         self._awaiting_end_call_confirm = False
 
@@ -50,7 +167,7 @@ class CodexLLMProcessor(FrameProcessor):
                 if self._awaiting_end_call_confirm:
                     if _YES_RE.search(text):
                         self._awaiting_end_call_confirm = False
-                        close_text = settings.end_call_close_text.strip()
+                        close_text = _close_text_for_lang(self._call_lang)
                         if close_text:
                             await self.push_frame(LLMTextFrame(text=close_text), FrameDirection.DOWNSTREAM)
                         try:
@@ -64,41 +181,74 @@ class CodexLLMProcessor(FrameProcessor):
                     if _NO_RE.search(text):
                         self._awaiting_end_call_confirm = False
                         await self.push_frame(
-                            LLMTextFrame(text="Understood. We can continue."),
+                            LLMTextFrame(text=_localized_text(self._call_lang, "continue")),
                             FrameDirection.DOWNSTREAM,
                         )
                         return
+                    # Caller moved on; clear confirmation mode.
+                    self._awaiting_end_call_confirm = False
 
-                end_call, conf = await detect_end_call_intent(text)
-                logger.info(
-                    "End-call intent: end_call={} conf={} text={}",
-                    end_call,
-                    f"{conf:.2f}",
-                    text,
-                )
-                if end_call and conf >= settings.end_call_threshold:
-                    close_text = settings.end_call_close_text.strip()
+                local_intent = _local_end_intent(text)
+                logger.info("Local end-call intent: {} text={}", local_intent, text)
+
+                if local_intent == "end_now":
+                    close_text = _close_text_for_lang(self._call_lang)
                     if close_text:
                         await self.push_frame(LLMTextFrame(text=close_text), FrameDirection.DOWNSTREAM)
                     try:
                         await self._hangup_cb(
                             delay_s=settings.end_call_hangup_delay_sec,
-                            reason="end_call_intent",
+                            reason="end_call_local",
                         )
                     except Exception:
                         pass
                     return
-                if end_call and settings.end_call_confirm and conf >= settings.end_call_confirm_threshold:
+
+                if local_intent == "confirm" and settings.end_call_confirm:
                     self._awaiting_end_call_confirm = True
                     await self.push_frame(
-                        LLMTextFrame(text="Do you want me to end the call?"),
+                        LLMTextFrame(text=_localized_text(self._call_lang, "confirm_end")),
                         FrameDirection.DOWNSTREAM,
                     )
                     return
+
+                # Optional slower fallback classifier, disabled by default.
+                if settings.end_call_enabled:
+                    end_call, conf = await detect_end_call_intent(text)
+                    logger.info(
+                        "LLM end-call intent: end_call={} conf={} text={}",
+                        end_call,
+                        f"{conf:.2f}",
+                        text,
+                    )
+                    if end_call and conf >= settings.end_call_threshold:
+                        close_text = _close_text_for_lang(self._call_lang)
+                        if close_text:
+                            await self.push_frame(LLMTextFrame(text=close_text), FrameDirection.DOWNSTREAM)
+                        try:
+                            await self._hangup_cb(
+                                delay_s=settings.end_call_hangup_delay_sec,
+                                reason="end_call_intent",
+                            )
+                        except Exception:
+                            pass
+                        return
+                    if end_call and settings.end_call_confirm and conf >= settings.end_call_confirm_threshold:
+                        self._awaiting_end_call_confirm = True
+                        await self.push_frame(
+                            LLMTextFrame(text=_localized_text(self._call_lang, "confirm_end")),
+                            FrameDirection.DOWNSTREAM,
+                        )
+                        return
+
                 try:
-                    reply, self._session_id = await run_codex(text, self._session_id)
+                    reply, self._session_id = await run_codex(
+                        text,
+                        self._session_id,
+                        call_lang=self._call_lang,
+                    )
                 except asyncio.TimeoutError:
-                    reply = "Sorry, I had trouble responding. Please try again."
+                    reply = _localized_text(self._call_lang, "timeout")
                 if not reply:
                     return
                 await self.push_frame(LLMTextFrame(text=reply), FrameDirection.DOWNSTREAM)

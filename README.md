@@ -24,9 +24,9 @@ Point `mod_audio_stream` to:
 ws://<app_host>:8000/ws_fs?session_id=${uuid}&lang=${lang}&token=${ws_token}
 ```
 If `WS_REQUIRE_TOKEN=false`, `token` can be empty.
-`lang=en` uses `TTS_VOICE_EN`; `lang=vi` uses `TTS_VOICE_VI`; `lang=km` uses `TTS_VOICE_KM`.
+`lang=en` uses `TTS_VOICE_EN`; `lang=vi` uses `TTS_VOICE_VI`; `lang=km` uses `TTS_VOICE_KM`; `lang=hi` uses `TTS_VOICE_HI`.
 STT routing:
-- `lang=en|vi` -> Deepgram
+- `lang=en|vi|hi` -> Deepgram
 - `lang=km` -> Google Cloud Speech (`GOOGLE_APPLICATION_CREDENTIALS` must be set)
 
 ## Health

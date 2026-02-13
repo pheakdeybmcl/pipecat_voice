@@ -85,5 +85,96 @@
     "Opt-in/opt-out enforcement",
     "Data retention controls"
   ],
+  "localized_profiles": {
+    "km": {
+      "company_name": "BigfootMediaTech",
+      "tagline": "សេវាទំនាក់ទំនងលើក្លោដ សម្រាប់សំឡេង សារ និង eSIM",
+      "overview": "យើងផ្តល់សេវា Voice, SMS និង eSIM សម្រាប់អាជីវកម្ម Call Center និងក្រុម IoT ដោយផ្តោតលើស្ថេរភាព ការដំឡើងឆាប់ និងតម្លៃច្បាស់លាស់។",
+      "services": [
+        {
+          "name": "សេវាសំឡេង (Voice)",
+          "description": "សម្រាប់ការហៅទូរស័ព្ទអាជីវកម្ម IVR និង Call Center",
+          "features": [
+            "ហៅចូល និងហៅចេញ",
+            "ម៉ឺនុយ IVR និងបញ្ជូនការហៅ",
+            "ថតសំឡេងការហៅ និងរក្សាទុក",
+            "លេខក្នុងតំបន់ និងលេខ Toll-free",
+            "SIP Trunk និងភ្ជាប់ PBX",
+            "Queue និងបែងចែកភ្នាក់ងារ"
+          ]
+        },
+        {
+          "name": "សេវាសារ (Messaging)",
+          "description": "SMS ពីរទិស សម្រាប់ជំនួយអតិថិជន និងសារជូនដំណឹង",
+          "features": [
+            "SMS ពីរទិស",
+            "របាយការណ៍ដឹកជញ្ជូន និង Retry",
+            "លេខ Shortcode និង Long code",
+            "គ្រប់គ្រង Opt-in និង Opt-out",
+            "Template និងកំណត់ពេលផ្ញើ"
+          ]
+        },
+        {
+          "name": "សេវា eSIM",
+          "description": "ការតភ្ជាប់ eSIM សម្រាប់ឧបករណ៍ និង IoT",
+          "features": [
+            "Activate និង Provisioning ឧបករណ៍",
+            "តាមដានការប្រើប្រាស់ និងកំណត់ Data cap",
+            "គាំទ្របណ្តាញច្រើន",
+            "គ្រប់គ្រង lifecycle ស៊ីម"
+          ]
+        }
+      ],
+      "add_ons": [
+        "បម្លែងសំឡេងទៅអក្សរ និងវិភាគទិន្នន័យការហៅ",
+        "ការការពារ Fraud និងពិនិត្យលេខ",
+        "Dedicated IP និង Routing ផ្ទាល់ខ្លួន",
+        "Compliance Pack (A2P 10DLC registration)"
+      ],
+      "plans": [
+        {
+          "name": "គម្រោង Starter",
+          "price": "$29/ខែ",
+          "includes": "លេខ 1, Voice 1,000 នាទី, SMS 1,500",
+          "overage": "Voice $0.015/នាទី, SMS $0.008/សារ"
+        },
+        {
+          "name": "គម្រោង Business",
+          "price": "$99/ខែ",
+          "includes": "លេខ 3, Voice 5,000 នាទី, SMS 8,000, IVR មូលដ្ឋាន",
+          "overage": "Voice $0.012/នាទី, SMS $0.007/សារ"
+        },
+        {
+          "name": "គម្រោង Enterprise",
+          "price": "តម្លៃតាមតម្រូវការ",
+          "includes": "បរិមាណខ្ពស់, Routing កម្រិតខ្ពស់, ជំនួយឯកទេស និង SLA"
+        }
+      ],
+      "numbers": {
+        "local_number": "$1/ខែ",
+        "toll_free_number": "$2/ខែ",
+        "porting": "ឥតគិតថ្លៃ ប្រសិនបើមានគម្រោងសកម្ម"
+      },
+      "onboarding": [
+        "ជ្រើសគម្រោង និងបន្ថែមលេខ",
+        "ផ្ទៀងផ្ទាត់អាជីវកម្មសម្រាប់ Messaging",
+        "កំណត់ Routing/IVR",
+        "ចាប់ផ្តើមប្រើប្រាស់ជាក់ស្តែង"
+      ],
+      "sla": "Uptime 99.95% សម្រាប់អតិថិជន Enterprise",
+      "support": {
+        "hours": "ចន្ទ ដល់ សុក្រ 9:00am-6:00pm",
+        "email": "support@bigfootmediatech.com",
+        "phone": "+1-555-0100",
+        "response_time": "ឆ្លើយតបក្នុងថ្ងៃធ្វើការ សម្រាប់គម្រោងស្តង់ដារ"
+      },
+      "compliance": [
+        "ណែនាំអំពី A2P 10DLC",
+        "អនុវត្ត Opt-in/Opt-out",
+        "គ្រប់គ្រងការរក្សាទុកទិន្នន័យ"
+      ],
+      "greeting": "សួស្តី នេះជាក្រុមជំនួយអតិថិជន។ តើខ្ញុំអាចជួយអ្វីបានខ្លះ?"
+    }
+  },
   "greeting": "Hello, this is support. How can I help you today?"
 }

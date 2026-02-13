@@ -15,21 +15,23 @@ WS_ENFORCE_SESSION_ID=true
 WS_REQUIRE_TOKEN=true
 WS_AUTH_TOKEN=<strong-random-token>
 WS_ALLOWED_IPS=127.0.0.1,<your-freeswitch-ip>
+DEEPGRAM_LANGUAGE_HI=hi
 
 STT_PROVIDER_KM=google
 GOOGLE_STT_LANGUAGE=km-KH
 GOOGLE_STT_MODEL=latest_long
-GOOGLE_STT_MIN_UTTERANCE_MS=300
+GOOGLE_STT_MIN_UTTERANCE_MS=200
 GOOGLE_APPLICATION_CREDENTIALS=/opt/pipecat_voice/keys/google-stt.json
 
 TTS_VOICE_EN=en-US-JennyNeural
 TTS_VOICE_VI=vi-VN-HoaiMyNeural
 TTS_VOICE_KM=km-KH-SreymomNeural
+TTS_VOICE_HI=hi-IN-SwaraNeural
 
 SILENCE_HANGUP_SEC=45
-END_CALL_THRESHOLD=0.80
-END_CALL_CONFIRM=true
-END_CALL_CONFIRM_THRESHOLD=0.60
+VAD_SPEECH_FRAMES=4
+VAD_SILENCE_FRAMES=5
+END_CALL_ENABLED=false
 ```
 
 ## 3) Restart service
@@ -53,6 +55,7 @@ journalctl -u pipecat_voice -n 200 --no-pager -l | egrep "WS connected|Using Dee
 Expected:
 - `lang=en` -> Deepgram STT + `TTS_VOICE_EN`
 - `lang=vi` -> Deepgram STT language `vi` + `TTS_VOICE_VI`
+- `lang=hi` -> Deepgram STT language `hi` + `TTS_VOICE_HI`
 - `lang=km` -> Google STT + `TTS_VOICE_KM`
 
 ## 6) Verify FreeSWITCH dialplan deployed

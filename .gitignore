@@ -16,3 +16,5 @@ legacy/
 __pycache__/
 *.mp3
 *.sqlite3
+
+secrets/

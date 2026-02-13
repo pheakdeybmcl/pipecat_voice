@@ -1,0 +1,107 @@
+{
+  "company_name": "BigfootMediaTech",
+  "tagline": "Nen tang lien lac dam may cho voice, tin nhan va eSIM.",
+  "overview": "Chung toi cung cap dich vu voice, SMS va eSIM cho doanh nghiep, call center va doi IoT voi do on dinh cao, trien khai nhanh va gia ro rang.",
+  "labels": {
+    "company": "Cong ty",
+    "tagline": "Khau hieu",
+    "overview": "Tong quan",
+    "services": "Dich vu",
+    "add_ons": "Tien ich bo sung",
+    "plans": "Goi cuoc",
+    "numbers": "Gia so",
+    "onboarding": "Quy trinh trien khai",
+    "sla": "SLA",
+    "support": "Ho tro",
+    "compliance": "Tuan thu",
+    "hours": "Gio lam viec",
+    "email": "Email",
+    "phone": "Dien thoai",
+    "response_time": "Thoi gian phan hoi",
+    "overage": "Cuoc vuot goi"
+  },
+  "services": [
+    {
+      "name": "Voice",
+      "description": "Goi dien doanh nghiep, IVR va tinh nang call center.",
+      "features": [
+        "Goi vao/goi ra",
+        "IVR va dinh tuyen cuoc goi",
+        "Ghi am va luu tru cuoc goi",
+        "So local va toll-free",
+        "SIP trunk va tich hop PBX",
+        "Hang doi va phan bo agent"
+      ]
+    },
+    {
+      "name": "Messaging",
+      "description": "SMS hai chieu cho ho tro va canh bao.",
+      "features": [
+        "SMS hai chieu",
+        "Bao cao giao tin va retry",
+        "Short code va long code",
+        "Quan ly opt-in/opt-out",
+        "Mau tin nhan va gui theo lich"
+      ]
+    },
+    {
+      "name": "eSIM",
+      "description": "Ket noi eSIM cho thiet bi va IoT.",
+      "features": [
+        "Kich hoat va provisioning",
+        "Theo doi su dung va gioi han data",
+        "Phu song da mang",
+        "Quan ly vong doi thiet bi"
+      ]
+    }
+  ],
+  "add_ons": [
+    "Chuyen am thanh thanh van ban va phan tich",
+    "Chong gian lan va sang loc so",
+    "Dedicated IP va tuy chinh dinh tuyen",
+    "Compliance pack (A2P 10DLC)"
+  ],
+  "plans": [
+    {
+      "name": "Starter",
+      "price": "$29/thang",
+      "includes": "1 so, 1,000 phut, 1,500 SMS",
+      "overage": "Voice $0.015/phut, SMS $0.008/tin"
+    },
+    {
+      "name": "Business",
+      "price": "$99/thang",
+      "includes": "3 so, 5,000 phut, 8,000 SMS, IVR co ban",
+      "overage": "Voice $0.012/phut, SMS $0.007/tin"
+    },
+    {
+      "name": "Enterprise",
+      "price": "Tuy chinh",
+      "includes": "San luong cao, dinh tuyen nang cao, ho tro rieng, SLA"
+    }
+  ],
+  "numbers": {
+    "local_number": "$1/thang",
+    "toll_free_number": "$2/thang",
+    "porting": "Mien phi khi co goi dang hoat dong"
+  },
+  "onboarding": [
+    "Chon goi va them so",
+    "Xac minh doanh nghiep cho messaging",
+    "Cau hinh routing/IVR",
+    "Van hanh"
+  ],
+  "sla": "Uptime 99.95% cho khach hang Enterprise",
+  "support": {
+    "hours": "Thu Hai den Thu Sau 9am-6pm",
+    "email": "support@bigfootmediatech.com",
+    "phone": "+1-555-0100",
+    "response_time": "Phan hoi trong ngay lam viec doi voi goi tieu chuan"
+  },
+  "compliance": [
+    "Huong dan A2P 10DLC",
+    "Thuc thi opt-in/opt-out",
+    "Kiem soat luu tru du lieu"
+  ],
+  "greeting": "Xin chao, day la bo phan ho tro. Toi co the giup gi cho ban?"
+}

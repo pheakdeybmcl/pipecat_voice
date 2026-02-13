@@ -9,7 +9,6 @@
       <action application="set" data="dtmf_duration=240"/>
 
       <action application="set" data="hangup_after_playback=false"/>
-      <!-- For testing: disable media timeouts so calls don't drop if RTP is blocked -->
       <action application="set" data="media_timeout=0"/>
       <action application="set" data="media_hold_timeout=0"/>
       <action application="set" data="rtp_timeout_sec=0"/>
@@ -24,41 +23,66 @@
       <action application="set" data="STREAM_SUPPRESS_LOG=false"/>
       <action application="set" data="STREAM_MESSAGE_DEFLATE=false"/>
       <action application="set" data="STREAM_BUFFER_SIZE=20"/>
-      <!-- Debug: record inbound (caller) audio only to verify mic/RTP -->
       <action application="set" data="RECORD_READ_ONLY=true"/>
       <action application="set" data="RECORD_WRITE_ONLY=false"/>
       <action application="record_session" data="/tmp/${uuid}_read.wav"/>
 
       <!-- Language selection -->
-      <action application="set" data="lang=en"/>
       <action application="set" data="lang_digit="/>
-      <!-- Give RTP a moment to open so the prompt isn't clipped -->
       <action application="playback" data="silence_stream://500"/>
-      <!-- "Press 1 for English, 2 for Khmer, 3 for Vietnamese" -->
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-press.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-one.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-for.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-english.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-press.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-two.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-for.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-language.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-press.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-three.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-for.wav"/>
-      <action application="playback" data="/usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-language.wav"/>
-      <!-- Read 1 digit, 3 tries, 5s timeout -->
-      <action application="read" data="1 1 3 5000 # lang_digit /usr/local/freeswitch/sounds/en/us/callie/8000/ivr/ivr-please_enter_extension_followed_by_pound.wav"/>
-      <!-- Map digit to language (default to en): 1=en, 2=km, 3=vi -->
-      <action application="set" data="lang=${if(${lang_digit}==2,km,en)}"/>
-      <action application="set" data="lang=${if(${lang_digit}==3,vi,${lang})}"/>
+      <action application="read" data="1 1 /usr/local/freeswitch/share/freeswitch/sounds/custom/ivr_lang_prompt.wav lang_digit 8000 #"/>
+      <action application="transfer" data="lang_${lang_digit} XML default"/>
+    </condition>
+  </extension>
 
-      <!-- Start audio stream with selected language -->
-      <!-- WS host/port from globals (set in vars.xml) -->
+  <!-- 2 = Khmer -->
+  <extension name="va_lang_km">
+    <condition field="destination_number" expression="^lang_2$">
+      <action application="set" data="lang=km"/>
+      <action application="playback" data="/usr/local/freeswitch/share/freeswitch/sounds/custom/va_welcome_km.wav"/>
       <action application="set" data="app_host=${global_app_host}"/>
       <action application="set" data="app_port=${global_app_port}"/>
       <action application="set" data="ws_token=${global_ws_token}"/>
-      <action application="set" data="api_result=${bgapi(uuid_audio_stream ${uuid} start ws://${app_host}:${app_port}/ws_fs?session_id=${uuid}&amp;lang=${lang}&amp;token=${ws_token} mono 16k)}"/>
+      <action application="set" data="api_result=${bgapi(uuid_audio_stream ${uuid} start ws://${app_host}:${app_port}/ws_fs?session_id=${uuid}&amp;lang=km&amp;token=${ws_token} mono 16k)}"/>
+      <action application="endless_playback" data="silence_stream://-1"/>
+    </condition>
+  </extension>
+
+  <!-- 3 = Vietnamese -->
+  <extension name="va_lang_vi">
+    <condition field="destination_number" expression="^lang_3$">
+      <action application="set" data="lang=vi"/>
+      <action application="playback" data="/usr/local/freeswitch/share/freeswitch/sounds/custom/va_welcome_vi.wav"/>
+      <action application="set" data="app_host=${global_app_host}"/>
+      <action application="set" data="app_port=${global_app_port}"/>
+      <action application="set" data="ws_token=${global_ws_token}"/>
+      <action application="set" data="api_result=${bgapi(uuid_audio_stream ${uuid} start ws://${app_host}:${app_port}/ws_fs?session_id=${uuid}&amp;lang=vi&amp;token=${ws_token} mono 16k)}"/>
+      <action application="endless_playback" data="silence_stream://-1"/>
+    </condition>
+  </extension>
+
+  <!-- 4 = Hindi -->
+  <extension name="va_lang_hi">
+    <condition field="destination_number" expression="^lang_4$">
+      <action application="set" data="lang=hi"/>
+      <action application="playback" data="/usr/local/freeswitch/share/freeswitch/sounds/custom/va_welcome_hi.wav"/>
+      <action application="set" data="app_host=${global_app_host}"/>
+      <action application="set" data="app_port=${global_app_port}"/>
+      <action application="set" data="ws_token=${global_ws_token}"/>
+      <action application="set" data="api_result=${bgapi(uuid_audio_stream ${uuid} start ws://${app_host}:${app_port}/ws_fs?session_id=${uuid}&amp;lang=hi&amp;token=${ws_token} mono 16k)}"/>
+      <action application="endless_playback" data="silence_stream://-1"/>
+    </condition>
+  </extension>
+
+  <!-- 1 or invalid/empty = English -->
+  <extension name="va_lang_en_default">
+    <condition field="destination_number" expression="^lang_.*$">
+      <action application="set" data="lang=en"/>
+      <action application="playback" data="/usr/local/freeswitch/share/freeswitch/sounds/custom/va_welcome_en.wav"/>
+      <action application="set" data="app_host=${global_app_host}"/>
+      <action application="set" data="app_port=${global_app_port}"/>
+      <action application="set" data="ws_token=${global_ws_token}"/>
+      <action application="set" data="api_result=${bgapi(uuid_audio_stream ${uuid} start ws://${app_host}:${app_port}/ws_fs?session_id=${uuid}&amp;lang=en&amp;token=${ws_token} mono 16k)}"/>
       <action application="endless_playback" data="silence_stream://-1"/>
     </condition>
   </extension>
