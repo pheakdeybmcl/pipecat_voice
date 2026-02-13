@@ -32,9 +32,11 @@ class BargeInState:
     tts_playing: bool = False
     mute_until: float = 0.0
     tts_until: float = 0.0
+    tts_started_at: float = 0.0
 
     def set_tts_playing(self, duration_s: float) -> None:
         self.tts_playing = True
+        self.tts_started_at = time.time()
         until = time.time() + max(0.0, duration_s)
         self.mute_until = until
         self.tts_until = until
@@ -43,9 +45,18 @@ class BargeInState:
         self.tts_playing = False
         self.mute_until = time.time() + max(0.0, cooloff_s)
         self.tts_until = time.time()
+        self.tts_started_at = 0.0
 
     def should_mute(self) -> bool:
         return time.time() < self.mute_until
+
+    def can_barge_in(self, *, min_tts_ms: int, rms: float, trigger_rms: float) -> bool:
+        if not self.tts_playing:
+            return False
+        min_secs = max(0.0, float(min_tts_ms) / 1000.0)
+        if self.tts_started_at and (time.time() - self.tts_started_at) < min_secs:
+            return False
+        return rms >= max(0.0, trigger_rms)
 
 
 class WebRTCBargeInVAD:

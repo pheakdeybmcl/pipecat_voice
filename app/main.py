@@ -29,7 +29,7 @@ except Exception:
 from .config import settings
 from .processors import CodexLLMProcessor, EdgeTTSProcessor, FSSinkProcessor
 from .esl_listener import run_esl_autoplay, esl_api_command
-from .barge_in import BargeInState, WebRTCBargeInVAD
+from .barge_in import BargeInState, WebRTCBargeInVAD, calc_rms
 from .google_stt import GoogleSegmentSTT
 
 app = FastAPI()
@@ -301,18 +301,28 @@ async def ws_fs(ws: WebSocket):
                 if vad is not None:
                     evt = vad.push(data_bytes)
                     if settings.barge_in_enabled and evt == "speech_start" and barge_state.tts_playing:
-                        logger.info("Barge-in detected, stopping TTS for {}", call_uuid)
-                        barge_state.stop_tts()
-                        try:
-                            reply = await esl_api_command(
-                                settings.fs_esl_host,
-                                settings.fs_esl_port,
-                                settings.fs_esl_password,
-                                f"uuid_break {call_uuid} all",
+                        rms = calc_rms(data_bytes)
+                        if barge_state.can_barge_in(
+                            min_tts_ms=settings.barge_in_min_tts_ms,
+                            rms=rms,
+                            trigger_rms=settings.barge_in_trigger_rms,
+                        ):
+                            logger.info(
+                                "Barge-in detected, stopping TTS for {} (rms={:.4f})",
+                                call_uuid,
+                                rms,
                             )
-                            logger.info("uuid_break reply: {}", reply)
-                        except Exception as exc:
-                            logger.warning("uuid_break failed: {}", exc)
+                            barge_state.stop_tts()
+                            try:
+                                reply = await esl_api_command(
+                                    settings.fs_esl_host,
+                                    settings.fs_esl_port,
+                                    settings.fs_esl_password,
+                                    f"uuid_break {call_uuid} all",
+                                )
+                                logger.info("uuid_break reply: {}", reply)
+                            except Exception as exc:
+                                logger.warning("uuid_break failed: {}", exc)
                 if google_km_stt is not None:
                     if vad is None:
                         logger.warning("Google Khmer STT requires VAD; skipping audio chunk")

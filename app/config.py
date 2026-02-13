@@ -42,6 +42,8 @@ class Settings:
         "true",
         "yes",
     )
+    barge_in_min_tts_ms: int = int(os.getenv("BARGE_IN_MIN_TTS_MS", "800"))
+    barge_in_trigger_rms: float = float(os.getenv("BARGE_IN_TRIGGER_RMS", "0.02"))
     silence_hangup_sec: int = int(os.getenv("SILENCE_HANGUP_SEC", "45"))
 
     # Deepgram STT
